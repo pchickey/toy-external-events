@@ -5,5 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-wasmtime = { path = "../wasmtime/crates/wasmtime", default-features = false }
+wasmtime = { path = "../wasmtime/crates/wasmtime" }
 wasmtime-wasi-io = { path = "../wasmtime/crates/wasi-io", default-features = false }
+futures = "*"
+bytes = "*"
