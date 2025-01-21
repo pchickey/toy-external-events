@@ -1,7 +1,10 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 use wasmtime_wasi_io::poll::Pollable;
 use wasmtime_wasi_io::streams::{InputStream, OutputStream};
 
@@ -39,17 +42,21 @@ fn main() -> Result<()> {
 
 struct Ctx {
     table: ResourceTable,
-    tick: u64,
-    stdout: UnlimitedWrites,
-    stderr: UnlimitedWrites,
+    clock: Clock,
+    stdout: TimestampedWrites,
+    stderr: TimestampedWrites,
 }
 impl Ctx {
     fn new() -> Self {
+        let clock = Clock::new();
+        let stdout = TimestampedWrites::new(clock.clone());
+        let stderr = TimestampedWrites::new(clock.clone());
+
         Ctx {
             table: ResourceTable::new(),
-            tick: 0,
-            stdout: UnlimitedWrites::new(),
-            stderr: UnlimitedWrites::new(),
+            clock,
+            stdout,
+            stderr,
         }
     }
 }
@@ -61,10 +68,10 @@ impl wasmtime_wasi_io::IoView for Ctx {
 
 impl toy_external_events::Embedding for Ctx {
     fn monotonic_now(&self) -> u64 {
-        self.tick
+        self.clock.get()
     }
     fn monotonic_timer(&self, deadline: u64) -> impl Pollable {
-        Deadline(deadline)
+        Deadline::new(self.clock.clone(), deadline)
     }
     fn stdin(&self) -> impl InputStream {
         NeverReadable
@@ -77,8 +84,39 @@ impl toy_external_events::Embedding for Ctx {
     }
 }
 
-#[derive(Debug)]
-struct Deadline(u64);
+#[derive(Debug, Clone)]
+struct Clock(Arc<Mutex<u64>>);
+impl Clock {
+    pub fn new() -> Self {
+        Clock(Arc::new(Mutex::new(0)))
+    }
+    pub fn get(&self) -> u64 {
+        *self.0.lock().unwrap()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Deadline {
+    clock: Clock,
+    deadline: u64,
+}
+impl Deadline {
+    fn new(clock: Clock, deadline: u64) -> Self {
+        Self { clock, deadline }
+    }
+}
+impl Future for Deadline {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let now = self.clock.get();
+        if now > self.deadline {
+            todo!("register waker with executor!!!");
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
+    }
+}
 #[wasmtime_wasi_io::async_trait]
 impl Pollable for Deadline {
     async fn ready(&mut self) {
@@ -100,25 +138,36 @@ impl InputStream for NeverReadable {
 }
 
 #[derive(Clone)]
-struct UnlimitedWrites(Arc<Mutex<VecDeque<Bytes>>>);
-impl UnlimitedWrites {
-    fn new() -> Self {
-        Self(Arc::new(Mutex::new(VecDeque::new())))
+struct TimestampedWrites {
+    clock: Clock,
+    log: Arc<Mutex<VecDeque<(u64, Bytes)>>>,
+}
+impl TimestampedWrites {
+    fn new(clock: Clock) -> Self {
+        Self {
+            clock,
+            log: Arc::new(Mutex::new(VecDeque::new())),
+        }
     }
 }
 #[wasmtime_wasi_io::async_trait]
-impl Pollable for UnlimitedWrites {
+impl Pollable for TimestampedWrites {
     async fn ready(&mut self) {}
 }
-impl OutputStream for UnlimitedWrites {
+impl OutputStream for TimestampedWrites {
     fn check_write(&mut self) -> wasmtime_wasi_io::streams::StreamResult<usize> {
         Ok(usize::MAX)
     }
     fn write(&mut self, contents: Bytes) -> wasmtime_wasi_io::streams::StreamResult<()> {
-        self.0.lock().unwrap().push_back(contents);
+        let time = self.clock.get();
+        self.log.lock().unwrap().push_back((time, contents));
         Ok(())
     }
     fn flush(&mut self) -> wasmtime_wasi_io::streams::StreamResult<()> {
         Ok(())
     }
+}
+
+struct Executor {
+    deadlines: Vec<(Deadline, std::task::Waker)>,
 }
