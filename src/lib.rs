@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use wasmtime::component::{Linker, Resource, ResourceTable};
 use wasmtime_wasi_io::{
     poll::{subscribe, DynPollable, Pollable},

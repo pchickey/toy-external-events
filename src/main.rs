@@ -78,7 +78,9 @@ impl wasmtime_wasi_io::IoView for Ctx {
 
 impl toy_external_events::Embedding for Ctx {
     fn monotonic_now(&self) -> u64 {
-        self.clock.get()
+        let now = self.clock.get();
+        println!("wasm told now is: {now}");
+        now
     }
     fn monotonic_timer(&self, deadline: u64) -> impl Pollable {
         Deadline::new(self.clock.clone(), deadline)
@@ -103,8 +105,9 @@ impl Clock {
     pub fn get(&self) -> u64 {
         self.0.load(Ordering::Relaxed)
     }
-    fn increment(&self) {
-        self.0.fetch_add(1, Ordering::Relaxed);
+    fn set(&self, to: u64) {
+        println!("clock advancing to {to}");
+        self.0.store(to, Ordering::Relaxed);
     }
 }
 
@@ -122,7 +125,7 @@ impl Future for Deadline {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let now = self.clock.get();
-        if now > self.due {
+        if now < self.due {
             Executor::current().push_deadline(self.clone(), cx.waker().clone());
             Poll::Pending
         } else {
@@ -133,7 +136,7 @@ impl Future for Deadline {
 #[wasmtime_wasi_io::async_trait]
 impl Pollable for Deadline {
     async fn ready(&mut self) {
-        todo!()
+        self.clone().await
     }
 }
 
@@ -221,13 +224,23 @@ pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'st
 
     let mut f = std::pin::pin!(f);
     let r = 'outer: loop {
-        for _ in 0..200 {
+        // Run some wasm:
+        const POLLS_PER_CLOCK: usize = 200; // Arbitrary, tune this i guess?
+        for _ in 0..POLLS_PER_CLOCK {
             match f.as_mut().poll(&mut cx) {
                 Poll::Pending => {}
                 Poll::Ready(r) => break 'outer r,
             }
         }
-        clock.increment();
+
+        // Wait for input from the outside world:
+        if let Some(sleep_until) = executor.0.lock().unwrap().earliest_deadline() {
+            clock.set(sleep_until);
+        } else {
+            clock.set(clock.get() + 1);
+        }
+
+        // any wakers become ready now.
         for waker in executor.0.lock().unwrap().ready_deadlines(clock.get()) {
             waker.wake()
         }
@@ -246,6 +259,9 @@ struct ExecutorInner {
 }
 
 impl ExecutorInner {
+    fn earliest_deadline(&self) -> Option<u64> {
+        self.deadlines.iter().map(|(d, _)| d.due).min()
+    }
     fn ready_deadlines(&mut self, now: u64) -> Vec<Waker> {
         let mut i = 0;
         let mut wakers = Vec::new();
