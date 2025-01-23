@@ -1,0 +1,6 @@
+package toy:embedding;
+
+world bindings {
+    include wasi:http/proxy@0.2.3;
+    include wasi:cli/imports@0.2.3;
+}

@@ -29,17 +29,16 @@ fn main() -> Result<()> {
     wasmtime_wasi_io::add_to_linker_async(&mut linker)?;
     toy_external_events::add_to_linker_async(&mut linker)?;
     let instance_pre = linker.instantiate_pre(&component)?;
-    let command_pre = toy_external_events::CommandPre::new(instance_pre)?;
+    let proxy_pre = toy_external_events::BindingsPre::new(instance_pre)?;
 
     let clock = Clock::new();
     let ctx = block_on(clock.clone(), async move {
         let mut store = Store::new(&engine, Ctx::new(clock));
-        let instance = command_pre.instantiate_async(&mut store).await?;
+        let instance = proxy_pre.instantiate_async(&mut store).await?;
         instance
-            .wasi_cli_run()
-            .call_run(&mut store)
-            .await?
-            .map_err(|()| anyhow!("instance exited with failure"))?;
+            .wasi_http_incoming_handler()
+            .call_handle(&mut store, todo!(), todo!())
+            .await?;
         Ok(store.into_data())
     })?;
 
@@ -265,6 +264,8 @@ impl ExecutorInner {
     fn ready_deadlines(&mut self, now: u64) -> Vec<Waker> {
         let mut i = 0;
         let mut wakers = Vec::new();
+        // This is basically https://doc.rust-lang.org/std/vec/struct.Vec.html#method.extract_if,
+        // which is unstable
         while i < self.deadlines.len() {
             if let Some((deadline, _)) = self.deadlines.get(i) {
                 if deadline.due <= now {

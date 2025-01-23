@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 wasmtime = { path = "../wasmtime/crates/wasmtime" }
-wasmtime-wasi-io = { path = "../wasmtime/crates/wasi-io", default-features = false }
+wasmtime-wasi-io = { path = "../wasmtime/crates/wasi-io" }
 futures = "*"
 bytes = "*"
