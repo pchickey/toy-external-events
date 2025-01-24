@@ -1,8 +1,9 @@
 package toy:embedding;
 
 world bindings {
-    include wasi:http/proxy@0.2.3;
+    include wasi:http/imports@0.2.3;
     include wasi:cli/imports@0.2.3;
     // Temporary, until I get proxy entrypoints to work:
     export wasi:cli/run@0.2.3;
+    //include wasi:http/proxy@0.2.3;
 }

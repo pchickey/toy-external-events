@@ -1,5 +1,5 @@
 [workspace]
-members = [ "guest", "embeddable" ]
+members = [ "guest", "embeddable", "embedding" ]
 
 [workspace.dependencies]
 anyhow = "1"
@@ -8,6 +8,7 @@ wasmtime-wasi-io = { git = "https://github.com/bytecodealliance/wasmtime", branc
 futures = "*"
 bytes = { version = "1", default-features = false }
 embeddable = { path = "embeddable" }
+embedding = { path = "embedding" }
 
 
 [package]
@@ -21,4 +22,5 @@ wasmtime = { workspace = true, features = ["cranelift"] }
 wasmtime-wasi-io.workspace = true
 futures.workspace = true
 bytes.workspace = true
+embedding.workspace = true
 embeddable.workspace = true

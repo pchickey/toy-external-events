@@ -215,6 +215,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
+name = "embedding"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "embeddable",
+ "futures",
+ "wasmtime",
+ "wasmtime-wasi-io",
+]
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -731,6 +743,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "embeddable",
+ "embedding",
  "futures",
  "wasmtime",
  "wasmtime-wasi-io",
