@@ -1,11 +1,15 @@
+extern crate alloc;
+
+use alloc::collections::VecDeque;
 use anyhow::Result;
 use bytes::Bytes;
-use std::collections::VecDeque;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use core::future::Future;
+use core::pin::Pin;
+use core::sync::atomic::{AtomicU64, Ordering};
+use core::task::{Context, Poll, Waker};
+
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+
 use wasmtime_wasi_io::poll::Pollable;
 use wasmtime_wasi_io::streams::{InputStream, OutputStream};
 
@@ -189,7 +193,7 @@ pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'st
     let waker = futures::task::noop_waker();
     let mut cx = Context::from_waker(&waker);
 
-    let mut f = std::pin::pin!(f);
+    let mut f = core::pin::pin!(f);
     let r = 'outer: loop {
         // Run some wasm:
         const POLLS_PER_CLOCK: usize = 200; // Arbitrary, tune this i guess?
