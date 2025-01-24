@@ -1,3 +1,9 @@
+#![no_std]
+extern crate alloc;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use anyhow::{bail, Result};
 use wasmtime::component::{Linker, Resource, ResourceTable};
 use wasmtime_wasi_io::{
@@ -408,7 +414,9 @@ impl<E: Embedding> wasi::filesystem::types::Host for EImpl<E> {
 
 impl<E: Embedding> wasi::random::random::Host for EImpl<E> {
     fn get_random_bytes(&mut self, len: u64) -> Result<Vec<u8>> {
-        Ok(vec![0u8; len as usize])
+        let mut vec = Vec::new();
+        vec.resize(len as usize, 0u8);
+        Ok(vec)
     }
     fn get_random_u64(&mut self) -> Result<u64> {
         Ok(0)
