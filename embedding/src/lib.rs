@@ -4,13 +4,14 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use alloc::rc::Rc;
+use alloc::string::String;
 use alloc::vec::Vec;
 use anyhow::Result;
 use bytes::Bytes;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
+use core::fmt::Write as _;
 use core::future::Future;
 use core::pin::Pin;
-use core::sync::atomic::{AtomicU64, Ordering};
 use core::task::{Context, Poll, Waker};
 
 use wasmtime_wasi_io::poll::Pollable;
@@ -37,11 +38,13 @@ impl Ctx {
         }
     }
 
-    pub fn report(&self) {
-        println!("stdout:");
-        self.stdout.report();
-        println!("stderr:");
-        self.stderr.report();
+    pub fn report(&self) -> String {
+        let mut out = String::new();
+        core::write!(&mut out, "stdout:\n");
+        self.stdout.report(&mut out);
+        core::write!(&mut out, "stderr:\n");
+        self.stderr.report(&mut out);
+        out
     }
 }
 impl wasmtime_wasi_io::IoView for Ctx {
@@ -53,7 +56,7 @@ impl wasmtime_wasi_io::IoView for Ctx {
 impl embeddable::Embedding for Ctx {
     fn monotonic_now(&self) -> u64 {
         let now = self.clock.get();
-        println!("wasm told now is: {now}");
+        //println!("wasm told now is: {now}");
         now
     }
     fn monotonic_timer(&self, deadline: u64) -> impl Pollable {
@@ -71,17 +74,17 @@ impl embeddable::Embedding for Ctx {
 }
 
 #[derive(Debug, Clone)]
-pub struct Clock(Rc<AtomicU64>);
+pub struct Clock(Rc<Cell<u64>>);
 impl Clock {
     pub fn new() -> Self {
-        Clock(Rc::new(AtomicU64::new(0)))
+        Clock(Rc::new(Cell::new(0)))
     }
     pub fn get(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
+        self.0.get()
     }
     fn set(&self, to: u64) {
-        println!("clock advancing to {to}");
-        self.0.store(to, Ordering::Relaxed);
+        //println!("clock advancing to {to}");
+        self.0.set(to)
     }
 }
 
@@ -139,9 +142,9 @@ impl TimestampedWrites {
             log: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
-    fn report(&self) {
+    fn report(&self, out: &mut impl core::fmt::Write) {
         for (time, line) in self.log.lock().unwrap().iter() {
-            println!("{:08} {:?}", time, String::from_utf8_lossy(line));
+            write!(out, "{:08} {:?}\n", time, String::from_utf8_lossy(line));
         }
     }
 }
