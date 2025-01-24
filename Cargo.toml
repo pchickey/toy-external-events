@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-wasmtime = { path = "../wasmtime/crates/wasmtime" }
-wasmtime-wasi-io = { path = "../wasmtime/crates/wasi-io" }
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime" }
+wasmtime-wasi-io = { git = "https://github.com/bytecodealliance/wasmtime" }
 futures = "*"
 bytes = "*"
