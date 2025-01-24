@@ -35,10 +35,18 @@ fn main() -> Result<()> {
     let ctx = block_on(clock.clone(), async move {
         let mut store = Store::new(&engine, Ctx::new(clock));
         let instance = proxy_pre.instantiate_async(&mut store).await?;
-        instance
-            .wasi_http_incoming_handler()
-            .call_handle(&mut store, todo!(), todo!())
-            .await?;
+        if false {
+            instance
+                .wasi_http_incoming_handler()
+                .call_handle(&mut store, todo!(), todo!())
+                .await?;
+        } else {
+            instance
+                .wasi_cli_run()
+                .call_run(&mut store)
+                .await?
+                .map_err(|()| anyhow!("run returned error"))?;
+        }
         Ok(store.into_data())
     })?;
 
