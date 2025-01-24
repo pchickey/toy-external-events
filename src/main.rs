@@ -41,7 +41,9 @@ fn main() -> Result<()> {
         Ok(store.into_data())
     })?;
 
-    ctx.report();
+    let mut out = String::new();
+    ctx.report(&mut out)?;
+    println!("{}", out);
 
     Ok(())
 }

@@ -9,7 +9,6 @@ use alloc::vec::Vec;
 use anyhow::Result;
 use bytes::Bytes;
 use core::cell::{Cell, RefCell};
-use core::fmt::Write as _;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
@@ -38,13 +37,11 @@ impl Ctx {
         }
     }
 
-    pub fn report(&self) -> String {
-        let mut out = String::new();
-        core::write!(&mut out, "stdout:\n");
-        self.stdout.report(&mut out);
-        core::write!(&mut out, "stderr:\n");
-        self.stderr.report(&mut out);
-        out
+    pub fn report(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
+        core::write!(out, "stdout:\n")?;
+        self.stdout.report(out)?;
+        core::write!(out, "stderr:\n")?;
+        self.stderr.report(out)
     }
 }
 impl wasmtime_wasi_io::IoView for Ctx {
@@ -87,6 +84,9 @@ impl Clock {
         self.0.set(to)
     }
 }
+// SAFETY: only will consume this crate in single-threaded environment
+unsafe impl Send for Clock {}
+unsafe impl Sync for Clock {}
 
 #[derive(Debug, Clone)]
 pub struct Deadline {
@@ -110,6 +110,10 @@ impl Future for Deadline {
         }
     }
 }
+// SAFETY: only will consume this crate in single-threaded environment
+unsafe impl Send for Deadline {}
+unsafe impl Sync for Deadline {}
+
 #[wasmtime_wasi_io::async_trait]
 impl Pollable for Deadline {
     async fn ready(&mut self) {
@@ -142,12 +146,17 @@ impl TimestampedWrites {
             log: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
-    fn report(&self, out: &mut impl core::fmt::Write) {
-        for (time, line) in self.log.lock().unwrap().iter() {
-            write!(out, "{:08} {:?}\n", time, String::from_utf8_lossy(line));
+    fn report(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
+        for (time, line) in self.log.borrow_mut().iter() {
+            write!(out, "{:08} {:?}\n", time, String::from_utf8_lossy(line))?;
         }
+        Ok(())
     }
 }
+// SAFETY: only will consume this crate in single-threaded environment
+unsafe impl Send for TimestampedWrites {}
+unsafe impl Sync for TimestampedWrites {}
+
 #[wasmtime_wasi_io::async_trait]
 impl Pollable for TimestampedWrites {
     async fn ready(&mut self) {}
@@ -166,7 +175,12 @@ impl OutputStream for TimestampedWrites {
     }
 }
 
-static EXECUTOR: RefCell<Option<Executor>> = RefCell::new(None);
+struct ExecutorGlobal(RefCell<Option<Executor>>);
+// SAFETY: only will consume this crate in single-threaded environment
+unsafe impl Send for ExecutorGlobal {}
+unsafe impl Sync for ExecutorGlobal {}
+
+static EXECUTOR: ExecutorGlobal = ExecutorGlobal(RefCell::new(None));
 
 pub struct Executor(Rc<RefCell<ExecutorInner>>);
 
@@ -174,6 +188,7 @@ impl Executor {
     pub fn current() -> Self {
         Executor(
             EXECUTOR
+                .0
                 .borrow_mut()
                 .as_ref()
                 .expect("Executor::current must be called within a running executor")
@@ -187,13 +202,13 @@ impl Executor {
 }
 
 pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'static) -> Result<R> {
-    if EXECUTOR.borrow_mut().is_some() {
+    if EXECUTOR.0.borrow_mut().is_some() {
         panic!("cannot block_on while executor is running!")
     }
     let executor = Executor(Rc::new(RefCell::new(ExecutorInner {
         deadlines: Vec::new(),
     })));
-    *EXECUTOR.borrow_mut() = Some(Executor(executor.0.clone()));
+    *EXECUTOR.0.borrow_mut() = Some(Executor(executor.0.clone()));
 
     let waker = futures::task::noop_waker();
     let mut cx = Context::from_waker(&waker);
@@ -223,6 +238,7 @@ pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'st
     };
 
     let _ = EXECUTOR
+        .0
         .borrow_mut()
         .take()
         .expect("executor vacated global while running");
