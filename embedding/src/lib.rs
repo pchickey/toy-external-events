@@ -1,14 +1,17 @@
+#![no_std]
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::collections::VecDeque;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
 use anyhow::Result;
 use bytes::Bytes;
+use core::cell::RefCell;
 use core::future::Future;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::task::{Context, Poll, Waker};
-
-use std::sync::{Arc, Mutex};
 
 use wasmtime_wasi_io::poll::Pollable;
 use wasmtime_wasi_io::streams::{InputStream, OutputStream};
@@ -68,10 +71,10 @@ impl embeddable::Embedding for Ctx {
 }
 
 #[derive(Debug, Clone)]
-pub struct Clock(Arc<AtomicU64>);
+pub struct Clock(Rc<AtomicU64>);
 impl Clock {
     pub fn new() -> Self {
-        Clock(Arc::new(AtomicU64::new(0)))
+        Clock(Rc::new(AtomicU64::new(0)))
     }
     pub fn get(&self) -> u64 {
         self.0.load(Ordering::Relaxed)
@@ -127,13 +130,13 @@ impl InputStream for NeverReadable {
 #[derive(Clone)]
 struct TimestampedWrites {
     clock: Clock,
-    log: Arc<Mutex<VecDeque<(u64, Bytes)>>>,
+    log: Rc<RefCell<VecDeque<(u64, Bytes)>>>,
 }
 impl TimestampedWrites {
     fn new(clock: Clock) -> Self {
         Self {
             clock,
-            log: Arc::new(Mutex::new(VecDeque::new())),
+            log: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
     fn report(&self) {
@@ -152,7 +155,7 @@ impl OutputStream for TimestampedWrites {
     }
     fn write(&mut self, contents: Bytes) -> wasmtime_wasi_io::streams::StreamResult<()> {
         let time = self.clock.get();
-        self.log.lock().unwrap().push_back((time, contents));
+        self.log.borrow_mut().push_back((time, contents));
         Ok(())
     }
     fn flush(&mut self) -> wasmtime_wasi_io::streams::StreamResult<()> {
@@ -160,16 +163,15 @@ impl OutputStream for TimestampedWrites {
     }
 }
 
-static EXECUTOR: Mutex<Option<Executor>> = Mutex::new(None);
+static EXECUTOR: RefCell<Option<Executor>> = RefCell::new(None);
 
-pub struct Executor(Arc<Mutex<ExecutorInner>>);
+pub struct Executor(Rc<RefCell<ExecutorInner>>);
 
 impl Executor {
     pub fn current() -> Self {
         Executor(
             EXECUTOR
-                .lock()
-                .unwrap()
+                .borrow_mut()
                 .as_ref()
                 .expect("Executor::current must be called within a running executor")
                 .0
@@ -177,18 +179,18 @@ impl Executor {
         )
     }
     pub fn push_deadline(&mut self, deadline: Deadline, waker: Waker) {
-        self.0.lock().unwrap().deadlines.push((deadline, waker))
+        self.0.borrow_mut().deadlines.push((deadline, waker))
     }
 }
 
 pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'static) -> Result<R> {
-    if EXECUTOR.lock().unwrap().is_some() {
+    if EXECUTOR.borrow_mut().is_some() {
         panic!("cannot block_on while executor is running!")
     }
-    let executor = Executor(Arc::new(Mutex::new(ExecutorInner {
+    let executor = Executor(Rc::new(RefCell::new(ExecutorInner {
         deadlines: Vec::new(),
     })));
-    *EXECUTOR.lock().unwrap() = Some(Executor(executor.0.clone()));
+    *EXECUTOR.borrow_mut() = Some(Executor(executor.0.clone()));
 
     let waker = futures::task::noop_waker();
     let mut cx = Context::from_waker(&waker);
@@ -205,21 +207,20 @@ pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'st
         }
 
         // Wait for input from the outside world:
-        if let Some(sleep_until) = executor.0.lock().unwrap().earliest_deadline() {
+        if let Some(sleep_until) = executor.0.borrow_mut().earliest_deadline() {
             clock.set(sleep_until);
         } else {
             clock.set(clock.get() + 1);
         }
 
         // any wakers become ready now.
-        for waker in executor.0.lock().unwrap().ready_deadlines(clock.get()) {
+        for waker in executor.0.borrow_mut().ready_deadlines(clock.get()) {
             waker.wake()
         }
     };
 
     let _ = EXECUTOR
-        .lock()
-        .unwrap()
+        .borrow_mut()
         .take()
         .expect("executor vacated global while running");
     r
