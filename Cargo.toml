@@ -1,11 +1,24 @@
+[workspace]
+members = [ "guest", "embeddable" ]
+
+[workspace.dependencies]
+anyhow = "1"
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "pch/wasmtime_bindgen_nostd", default-features = false }
+wasmtime-wasi-io = { git = "https://github.com/bytecodealliance/wasmtime", branch = "pch/wasmtime_bindgen_nostd", default-features = false }
+futures = "*"
+bytes = { version = "1", default-features = false }
+embeddable = { path = "embeddable" }
+
+
 [package]
 name = "toy-external-events"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
-wasmtime = { git = "https://github.com/bytecodealliance/wasmtime" }
-wasmtime-wasi-io = { git = "https://github.com/bytecodealliance/wasmtime" }
-futures = "*"
-bytes = "*"
+anyhow.workspace = true
+wasmtime = { workspace = true, features = ["cranelift"] }
+wasmtime-wasi-io.workspace = true
+futures.workspace = true
+bytes.workspace = true
+embeddable.workspace = true

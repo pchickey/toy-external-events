@@ -27,9 +27,9 @@ fn main() -> Result<()> {
 
     let mut linker: Linker<Ctx> = Linker::new(&engine);
     wasmtime_wasi_io::add_to_linker_async(&mut linker)?;
-    toy_external_events::add_to_linker_async(&mut linker)?;
+    embeddable::add_to_linker_async(&mut linker)?;
     let instance_pre = linker.instantiate_pre(&component)?;
-    let proxy_pre = toy_external_events::BindingsPre::new(instance_pre)?;
+    let proxy_pre = embeddable::BindingsPre::new(instance_pre)?;
 
     let clock = Clock::new();
     let ctx = block_on(clock.clone(), async move {
@@ -75,7 +75,7 @@ impl wasmtime_wasi_io::IoView for Ctx {
     }
 }
 
-impl toy_external_events::Embedding for Ctx {
+impl embeddable::Embedding for Ctx {
     fn monotonic_now(&self) -> u64 {
         let now = self.clock.get();
         println!("wasm told now is: {now}");
