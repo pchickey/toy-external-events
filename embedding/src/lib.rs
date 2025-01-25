@@ -16,9 +16,139 @@ use core::task::{Context, Poll, Waker};
 use wasmtime_wasi_io::poll::Pollable;
 use wasmtime_wasi_io::streams::{InputStream, OutputStream};
 
-use wasmtime::component::ResourceTable;
+use wasmtime::component::{Component, Linker, ResourceTable};
+use wasmtime::{Config, Engine, Store};
 
-pub struct Ctx {
+pub struct Runtime {
+    engine: Engine,
+    linker: Linker<Ctx>,
+}
+
+impl Runtime {
+    pub fn new() -> Result<Self> {
+        let mut config = Config::new();
+        config.async_support(true);
+        let engine = Engine::new(&config)?;
+        let mut linker = Linker::new(&engine);
+        wasmtime_wasi_io::add_to_linker_async(&mut linker)?;
+        embeddable::add_to_linker_async(&mut linker)?;
+        Ok(Runtime { engine, linker })
+    }
+
+    pub fn load(&self, cwasm: &[u8]) -> Result<RunnableComponent> {
+        let component = unsafe { Component::deserialize(&self.engine, cwasm)? };
+        let instance_pre = self.linker.instantiate_pre(&component)?;
+        let bindings_pre = embeddable::BindingsPre::new(instance_pre)?;
+        Ok(RunnableComponent {
+            engine: self.engine.clone(),
+            bindings_pre,
+        })
+    }
+}
+
+pub struct RunnableComponent {
+    engine: Engine,
+    bindings_pre: embeddable::BindingsPre<Ctx>,
+}
+
+impl RunnableComponent {
+    pub fn create(&self) -> Result<RunningComponent> {
+        let clock = Clock::new();
+        let mut store = Store::new(&self.engine, Ctx::new(clock.clone()));
+        let bindings_pre = self.bindings_pre.clone();
+        let fut = async move {
+            let instance = bindings_pre.instantiate_async(&mut store).await?;
+            instance
+                .wasi_cli_run()
+                .call_run(&mut store)
+                .await?
+                .map_err(|()| anyhow::anyhow!(""))?;
+            Ok(store.into_data())
+        };
+        let executor = Executor(Rc::new(RefCell::new(ExecutorInner {
+            deadlines: Vec::new(),
+        })));
+
+        let waker = futures::task::noop_waker();
+        Ok(RunningComponent {
+            clock,
+            executor,
+            waker,
+            fut: Some(Box::pin(fut)),
+            output: None,
+        })
+    }
+}
+
+pub struct RunningComponent {
+    clock: Clock,
+    executor: Executor,
+    waker: Waker,
+    fut: Option<Pin<Box<dyn Future<Output = Result<Ctx>>>>>,
+    output: Option<Result<Ctx>>,
+}
+
+impl RunningComponent {
+    pub fn earliest_deadline(&self) -> Option<u64> {
+        self.executor.0.borrow().earliest_deadline()
+    }
+
+    pub fn increment_clock(&self) {
+        self.clock.set(self.clock.get() + 1);
+        self.check_for_wake();
+    }
+
+    pub fn advance_clock(&self, to: u64) {
+        self.clock.set(to);
+        self.check_for_wake();
+    }
+
+    fn check_for_wake(&self) {
+        for waker in self
+            .executor
+            .0
+            .borrow_mut()
+            .ready_deadlines(self.clock.get())
+        {
+            waker.wake()
+        }
+    }
+
+    pub fn step(&mut self, poll_calls: usize) {
+        EXECUTOR.with(&self.executor, || {
+            let mut fut = self.fut.take().unwrap();
+
+            let mut cx = Context::from_waker(&self.waker);
+
+            for _ in 0..poll_calls {
+                match fut.as_mut().poll(&mut cx) {
+                    Poll::Pending => {}
+                    Poll::Ready(res) => {
+                        self.output = Some(res);
+                        break;
+                    }
+                }
+            }
+
+            self.fut = Some(fut);
+        })
+    }
+    pub fn check_complete(&mut self) -> Option<Result<String>> {
+        match self.output.take() {
+            None => None,
+            Some(Ok(ctx)) => {
+                let mut out = String::new();
+                if let Err(e) = ctx.report(&mut out) {
+                    return Some(Err(e.into()));
+                }
+                Some(Ok(out))
+            }
+            Some(Err(e)) => Some(Err(e)),
+        }
+    }
+}
+
+struct Ctx {
     table: ResourceTable,
     clock: Clock,
     stdout: TimestampedWrites,
@@ -176,13 +306,31 @@ impl OutputStream for TimestampedWrites {
 }
 
 struct ExecutorGlobal(RefCell<Option<Executor>>);
+impl ExecutorGlobal {
+    const fn new() -> Self {
+        ExecutorGlobal(RefCell::new(None))
+    }
+    fn with<R>(&self, executor: &Executor, f: impl FnOnce() -> R) -> R {
+        if self.0.borrow_mut().is_some() {
+            panic!("cannot block_on while executor is running!")
+        }
+        *self.0.borrow_mut() = Some(Executor(executor.0.clone()));
+        let r = f();
+        let _ = self
+            .0
+            .borrow_mut()
+            .take()
+            .expect("executor vacated global while running");
+        r
+    }
+}
 // SAFETY: only will consume this crate in single-threaded environment
 unsafe impl Send for ExecutorGlobal {}
 unsafe impl Sync for ExecutorGlobal {}
 
-static EXECUTOR: ExecutorGlobal = ExecutorGlobal(RefCell::new(None));
+static EXECUTOR: ExecutorGlobal = ExecutorGlobal::new();
 
-pub struct Executor(Rc<RefCell<ExecutorInner>>);
+struct Executor(Rc<RefCell<ExecutorInner>>);
 
 impl Executor {
     pub fn current() -> Self {
@@ -199,50 +347,6 @@ impl Executor {
     pub fn push_deadline(&mut self, deadline: Deadline, waker: Waker) {
         self.0.borrow_mut().deadlines.push((deadline, waker))
     }
-}
-
-pub fn block_on<R>(clock: Clock, f: impl Future<Output = Result<R>> + Send + 'static) -> Result<R> {
-    if EXECUTOR.0.borrow_mut().is_some() {
-        panic!("cannot block_on while executor is running!")
-    }
-    let executor = Executor(Rc::new(RefCell::new(ExecutorInner {
-        deadlines: Vec::new(),
-    })));
-    *EXECUTOR.0.borrow_mut() = Some(Executor(executor.0.clone()));
-
-    let waker = futures::task::noop_waker();
-    let mut cx = Context::from_waker(&waker);
-
-    let mut f = core::pin::pin!(f);
-    let r = 'outer: loop {
-        // Run some wasm:
-        const POLLS_PER_CLOCK: usize = 200; // Arbitrary, tune this i guess?
-        for _ in 0..POLLS_PER_CLOCK {
-            match f.as_mut().poll(&mut cx) {
-                Poll::Pending => {}
-                Poll::Ready(r) => break 'outer r,
-            }
-        }
-
-        // Wait for input from the outside world:
-        if let Some(sleep_until) = executor.0.borrow_mut().earliest_deadline() {
-            clock.set(sleep_until);
-        } else {
-            clock.set(clock.get() + 1);
-        }
-
-        // any wakers become ready now.
-        for waker in executor.0.borrow_mut().ready_deadlines(clock.get()) {
-            waker.wake()
-        }
-    };
-
-    let _ = EXECUTOR
-        .0
-        .borrow_mut()
-        .take()
-        .expect("executor vacated global while running");
-    r
 }
 
 struct ExecutorInner {
