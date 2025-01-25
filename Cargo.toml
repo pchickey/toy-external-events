@@ -2,10 +2,10 @@
 members = [ "guest", "embeddable", "embedding" ]
 
 [workspace.dependencies]
-anyhow = "1"
+anyhow = { version = "1", default-features = false }
 wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "pch/wasmtime_bindgen_nostd", default-features = false }
 wasmtime-wasi-io = { git = "https://github.com/bytecodealliance/wasmtime", branch = "pch/wasmtime_bindgen_nostd", default-features = false }
-futures = "*"
+futures-lite = { version = "2.6", default-features = false }
 bytes = { version = "1", default-features = false }
 embeddable = { path = "embeddable" }
 embedding = { path = "embedding" }
@@ -19,8 +19,4 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 wasmtime = { workspace = true, features = ["cranelift"] }
-wasmtime-wasi-io.workspace = true
-futures.workspace = true
-bytes.workspace = true
 embedding.workspace = true
-embeddable.workspace = true

@@ -69,7 +69,8 @@ impl RunnableComponent {
             deadlines: Vec::new(),
         })));
 
-        let waker = futures::task::noop_waker();
+        let waker = noop_waker();
+
         Ok(RunningComponent {
             clock,
             executor,
@@ -255,7 +256,7 @@ struct NeverReadable;
 #[wasmtime_wasi_io::async_trait]
 impl Pollable for NeverReadable {
     async fn ready(&mut self) {
-        futures::future::pending().await
+        futures_lite::future::pending().await
     }
 }
 impl InputStream for NeverReadable {
@@ -376,4 +377,22 @@ impl ExecutorInner {
         }
         wakers
     }
+}
+
+// Yanked from core::task::wake, which is unfortunately still unstable :/
+fn noop_waker() -> Waker {
+    use core::task::{RawWaker, RawWakerVTable};
+    const VTABLE: RawWakerVTable = RawWakerVTable::new(
+        // Cloning just returns a new no-op raw waker
+        |_| RAW,
+        // `wake` does nothing
+        |_| {},
+        // `wake_by_ref` does nothing
+        |_| {},
+        // Dropping does nothing as we don't allocate anything
+        |_| {},
+    );
+    const RAW: RawWaker = RawWaker::new(core::ptr::null(), &VTABLE);
+
+    unsafe { Waker::from_raw(RAW) }
 }

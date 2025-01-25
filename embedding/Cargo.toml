@@ -9,4 +9,4 @@ anyhow.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi-io.workspace = true
 bytes.workspace = true
-futures.workspace = true
+futures-lite.workspace = true
