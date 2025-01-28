@@ -1,11 +1,13 @@
 #![no_std]
 extern crate alloc;
 
+mod runtime;
+use runtime::Executor;
+
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use alloc::rc::Rc;
 use alloc::string::String;
-use alloc::vec::Vec;
 use anyhow::Result;
 use bytes::Bytes;
 use core::cell::{Cell, RefCell};
@@ -65,9 +67,7 @@ impl RunnableComponent {
                 .map_err(|()| anyhow::anyhow!(""))?;
             Ok(store.into_data())
         };
-        let executor = Executor(Rc::new(RefCell::new(ExecutorInner {
-            deadlines: Vec::new(),
-        })));
+        let executor = Executor::new();
 
         let waker = noop_waker();
 
@@ -91,7 +91,7 @@ pub struct RunningComponent {
 
 impl RunningComponent {
     pub fn earliest_deadline(&self) -> Option<u64> {
-        self.executor.0.borrow().earliest_deadline()
+        self.executor.earliest_deadline()
     }
 
     pub fn increment_clock(&self) {
@@ -105,18 +105,13 @@ impl RunningComponent {
     }
 
     fn check_for_wake(&self) {
-        for waker in self
-            .executor
-            .0
-            .borrow_mut()
-            .ready_deadlines(self.clock.get())
-        {
+        for waker in self.executor.ready_deadlines(self.clock.get()) {
             waker.wake()
         }
     }
 
     pub fn step(&mut self, poll_calls: usize) {
-        EXECUTOR.with(&self.executor, || {
+        self.executor.with(|| {
             let mut fut = self.fut.take().unwrap();
 
             let mut cx = Context::from_waker(&self.waker);
@@ -234,7 +229,7 @@ impl Future for Deadline {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let now = self.clock.get();
         if now < self.due {
-            Executor::current().push_deadline(self.clone(), cx.waker().clone());
+            Executor::current().push_deadline(self.due, cx.waker().clone());
             Poll::Pending
         } else {
             Poll::Ready(())
@@ -303,79 +298,6 @@ impl OutputStream for TimestampedWrites {
     }
     fn flush(&mut self) -> wasmtime_wasi_io::streams::StreamResult<()> {
         Ok(())
-    }
-}
-
-struct ExecutorGlobal(RefCell<Option<Executor>>);
-impl ExecutorGlobal {
-    const fn new() -> Self {
-        ExecutorGlobal(RefCell::new(None))
-    }
-    fn with<R>(&self, executor: &Executor, f: impl FnOnce() -> R) -> R {
-        if self.0.borrow_mut().is_some() {
-            panic!("cannot block_on while executor is running!")
-        }
-        *self.0.borrow_mut() = Some(Executor(executor.0.clone()));
-        let r = f();
-        let _ = self
-            .0
-            .borrow_mut()
-            .take()
-            .expect("executor vacated global while running");
-        r
-    }
-}
-// SAFETY: only will consume this crate in single-threaded environment
-unsafe impl Send for ExecutorGlobal {}
-unsafe impl Sync for ExecutorGlobal {}
-
-static EXECUTOR: ExecutorGlobal = ExecutorGlobal::new();
-
-struct Executor(Rc<RefCell<ExecutorInner>>);
-
-impl Executor {
-    pub fn current() -> Self {
-        Executor(
-            EXECUTOR
-                .0
-                .borrow_mut()
-                .as_ref()
-                .expect("Executor::current must be called within a running executor")
-                .0
-                .clone(),
-        )
-    }
-    pub fn push_deadline(&mut self, deadline: Deadline, waker: Waker) {
-        self.0.borrow_mut().deadlines.push((deadline, waker))
-    }
-}
-
-struct ExecutorInner {
-    deadlines: Vec<(Deadline, Waker)>,
-}
-
-impl ExecutorInner {
-    fn earliest_deadline(&self) -> Option<u64> {
-        self.deadlines.iter().map(|(d, _)| d.due).min()
-    }
-    fn ready_deadlines(&mut self, now: u64) -> Vec<Waker> {
-        let mut i = 0;
-        let mut wakers = Vec::new();
-        // This is basically https://doc.rust-lang.org/std/vec/struct.Vec.html#method.extract_if,
-        // which is unstable
-        while i < self.deadlines.len() {
-            if let Some((deadline, _)) = self.deadlines.get(i) {
-                if deadline.due <= now {
-                    let (_, waker) = self.deadlines.remove(i);
-                    wakers.push(waker);
-                } else {
-                    i += 1;
-                }
-            } else {
-                break;
-            }
-        }
-        wakers
     }
 }
 
