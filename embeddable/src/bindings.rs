@@ -14,6 +14,17 @@ wasmtime::component::bindgen!({
     trappable_imports: true,
     with: {
         "wasi:io": wasmtime_wasi_io::bindings::wasi::io,
+        "wasi:http/types/incoming-request": http::IncomingRequestResource,
+        "wasi:http/types/outgoing-response": http::OutgoingResponseResource,
+        "wasi:http/types/outgoing-request": http::OutgoingRequestResource,
+        "wasi:http/types/incoming-response": http::IncomingResponseResource,
+        "wasi:http/types/future-incoming-response": http::FutureIncomingResponse,
+        "wasi:http/types/incoming-body": http::DynIncomingBody,
+        "wasi:http/types/outgoing-body": http::DynOutgoingBody,
+        "wasi:http/types/fields": http::FieldsResource,
+        "wasi:http/types/future-trailers": http::FutureTrailers,
+        "wasi:http/types/response-outparam": http::DynResponseOutparam,
+        "wasi:http/types/request-options": http::DynRequestOptions,
     }
 });
 
@@ -29,6 +40,7 @@ pub fn add_to_linker_async<T: Embedding>(linker: &mut Linker<T>) -> Result<()> {
     wasi::filesystem::types::add_to_linker_get_host(linker, closure)?;
     wasi::random::random::add_to_linker_get_host(linker, closure)?;
     wasi::http::types::add_to_linker_get_host(linker, closure)?;
+    // FIXME: need wasi::http::outgoing_handler in here as well.
     Ok(())
 }
 fn type_annotate<T: Embedding, F>(val: F) -> F

@@ -9,6 +9,7 @@ use wasmtime_wasi_io::{
 };
 
 mod bindings;
+pub mod http;
 
 pub use bindings::{add_to_linker_async, Bindings, BindingsPre};
 
@@ -24,6 +25,11 @@ pub trait Embedding: wasmtime_wasi_io::IoView {
     fn stdin(&self) -> impl InputStream;
     fn stdout(&self) -> impl OutputStream;
     fn stderr(&self) -> impl OutputStream;
+
+    // FIXME additions here along the lines of:
+    // fn create_outgoing_request(&self) -> (impl OutgoingRequest, impl OutgoingBody)
+    // fn create_outgoing_response(&self) -> (impl OutgoingResponse, impl OutgoingBody)
+    // fn outbound_http(&self, outgoing request) -> mailbox<incoming response>
 }
 
 impl<T: Embedding> Embedding for EImpl<T> {
