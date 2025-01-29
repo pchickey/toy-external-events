@@ -20,7 +20,8 @@ fn main() -> Result<()> {
     let mut running_component = runnable_component.create()?;
 
     loop {
-        running_component.step();
+        let runs = running_component.step();
+        println!("step ran {runs}");
         if let Some(report) = running_component.check_complete() {
             let report = report?;
             println!("{report}");
@@ -28,8 +29,10 @@ fn main() -> Result<()> {
         }
 
         if let Some(sleep_until) = running_component.earliest_deadline() {
+            println!("advance clock to {sleep_until}");
             running_component.advance_clock(sleep_until);
         } else {
+            println!("increment clock");
             running_component.increment_clock();
         }
     }

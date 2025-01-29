@@ -43,14 +43,16 @@ impl Executor {
         )
     }
 
-    pub(crate) fn step(&self) {
+    pub(crate) fn step(&self) -> usize {
         if EXECUTOR.0.borrow_mut().is_some() {
             panic!("cannot step while executor is running!")
         }
         *EXECUTOR.0.borrow_mut() = Some(self.clone());
 
+        let mut count = 0;
         while let Some(runnable) = self.pop_runnable() {
             runnable.run();
+            count += 1;
         }
 
         let _ = EXECUTOR
@@ -58,6 +60,8 @@ impl Executor {
             .borrow_mut()
             .take()
             .expect("executor vacated global while running");
+
+        count
     }
 
     pub fn spawn<F, R>(&self, future: F) -> Task<R>

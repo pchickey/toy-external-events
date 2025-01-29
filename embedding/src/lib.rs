@@ -106,7 +106,7 @@ impl RunningComponent {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> usize {
         self.executor.step()
     }
 
