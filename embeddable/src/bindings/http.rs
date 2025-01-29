@@ -414,6 +414,7 @@ impl<E: Embedding> types::HostOutgoingBody for EImpl<E> {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)] // Temporary - while HostFields and Fields trait are just stubs
 pub struct FieldsResource(Rc<dyn crate::http::Fields>);
 impl FieldsResource {
     pub fn new(fields: impl crate::http::Fields + 'static) -> Self {

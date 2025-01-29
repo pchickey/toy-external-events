@@ -27,6 +27,7 @@ pub trait Embedding: wasmtime_wasi_io::IoView {
     fn stderr(&self) -> impl OutputStream;
 
     // FIXME additions here along the lines of:
+    // fn create_fields(&self) -> impl Fields
     // fn create_outgoing_request(&self) -> (impl OutgoingRequest, impl OutgoingBody)
     // fn create_outgoing_response(&self) -> (impl OutgoingResponse, impl OutgoingBody)
     // fn outbound_http(&self, outgoing request) -> mailbox<incoming response>
