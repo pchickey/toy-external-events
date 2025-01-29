@@ -10,6 +10,7 @@ bytes = { version = "1", default-features = false }
 embeddable = { path = "embeddable" }
 embedding = { path = "embedding" }
 pin-project-lite = "0.2.8"
+async-task = { version = "4.7", default-features = false }
 
 
 [package]

@@ -1,6 +1,9 @@
+use alloc::collections::VecDeque;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
+use async_task::{Runnable, Task};
 use core::cell::RefCell;
+use core::future::Future;
 use core::task::Waker;
 
 struct ExecutorGlobal(RefCell<Option<Executor>>);
@@ -15,12 +18,17 @@ unsafe impl Sync for ExecutorGlobal {}
 
 static EXECUTOR: ExecutorGlobal = ExecutorGlobal::new();
 
+#[derive(Clone)]
 pub struct Executor(Rc<RefCell<ExecutorInner>>);
+// SAFETY: only will consume this crate in single-threaded environment
+unsafe impl Send for Executor {}
+unsafe impl Sync for Executor {}
 
 impl Executor {
     pub fn new() -> Self {
         Executor(Rc::new(RefCell::new(ExecutorInner {
             deadlines: Vec::new(),
+            runnables: VecDeque::new(),
         })))
     }
     pub fn current() -> Self {
@@ -35,20 +43,41 @@ impl Executor {
         )
     }
 
-    pub(crate) fn with<R>(&self, f: impl FnOnce() -> R) -> R {
+    pub(crate) fn step(&self) {
         if EXECUTOR.0.borrow_mut().is_some() {
-            panic!("cannot block_on while executor is running!")
+            panic!("cannot step while executor is running!")
         }
-        *EXECUTOR.0.borrow_mut() = Some(Executor(self.0.clone()));
-        let r = f();
+        *EXECUTOR.0.borrow_mut() = Some(self.clone());
+
+        while let Some(runnable) = self.pop_runnable() {
+            runnable.run();
+        }
+
         let _ = EXECUTOR
             .0
             .borrow_mut()
             .take()
             .expect("executor vacated global while running");
-        r
     }
 
+    pub fn spawn<F, R>(&self, future: F) -> Task<R>
+    where
+        F: Future<Output = R> + Send + 'static,
+        R: Send + 'static,
+    {
+        let this = self.clone();
+        let schedule = move |runnable| this.push_runnable(runnable);
+        let (runnable, task) = async_task::spawn(future, schedule);
+        runnable.schedule();
+        task
+    }
+
+    fn push_runnable(&self, r: Runnable) {
+        self.0.borrow_mut().runnables.push_back(r);
+    }
+    fn pop_runnable(&self) -> Option<Runnable> {
+        self.0.borrow_mut().runnables.pop_front()
+    }
     pub fn push_deadline(&self, deadline: u64, waker: Waker) {
         self.0.borrow_mut().deadlines.push((deadline, waker))
     }
@@ -62,6 +91,7 @@ impl Executor {
 
 struct ExecutorInner {
     deadlines: Vec<(u64, Waker)>,
+    runnables: VecDeque<Runnable>,
 }
 
 impl ExecutorInner {

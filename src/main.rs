@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     let mut running_component = runnable_component.create()?;
 
     loop {
-        running_component.step(200);
+        running_component.step();
         if let Some(report) = running_component.check_complete() {
             let report = report?;
             println!("{report}");

@@ -9,6 +9,7 @@ use alloc::collections::VecDeque;
 use alloc::rc::Rc;
 use alloc::string::String;
 use anyhow::Result;
+use async_task::Task;
 use bytes::Bytes;
 use core::cell::{Cell, RefCell};
 use core::future::Future;
@@ -64,19 +65,16 @@ impl RunnableComponent {
                 .wasi_cli_run()
                 .call_run(&mut store)
                 .await?
-                .map_err(|()| anyhow::anyhow!(""))?;
-            Ok(store.into_data())
+                .map_err(|()| anyhow::anyhow!("cli run exited with error"))?;
+            Ok::<_, anyhow::Error>(store.into_data())
         };
         let executor = Executor::new();
-
-        let waker = noop_waker();
+        let task = executor.spawn(fut);
 
         Ok(RunningComponent {
             clock,
             executor,
-            waker,
-            fut: Some(Box::pin(fut)),
-            output: None,
+            output: Box::pin(task),
         })
     }
 }
@@ -84,9 +82,7 @@ impl RunnableComponent {
 pub struct RunningComponent {
     clock: Clock,
     executor: Executor,
-    waker: Waker,
-    fut: Option<Pin<Box<dyn Future<Output = Result<Ctx>>>>>,
-    output: Option<Result<Ctx>>,
+    output: Pin<Box<Task<Result<Ctx>>>>,
 }
 
 impl RunningComponent {
@@ -110,36 +106,25 @@ impl RunningComponent {
         }
     }
 
-    pub fn step(&mut self, poll_calls: usize) {
-        self.executor.with(|| {
-            let mut fut = self.fut.take().unwrap();
-
-            let mut cx = Context::from_waker(&self.waker);
-
-            for _ in 0..poll_calls {
-                match fut.as_mut().poll(&mut cx) {
-                    Poll::Pending => {}
-                    Poll::Ready(res) => {
-                        self.output = Some(res);
-                        break;
-                    }
-                }
-            }
-
-            self.fut = Some(fut);
-        })
+    pub fn step(&mut self) {
+        self.executor.step()
     }
+
     pub fn check_complete(&mut self) -> Option<Result<String>> {
-        match self.output.take() {
-            None => None,
-            Some(Ok(ctx)) => {
+        match self
+            .output
+            .as_mut()
+            .poll(&mut Context::from_waker(&noop_waker()))
+        {
+            Poll::Pending => None,
+            Poll::Ready(Ok(ctx)) => {
                 let mut out = String::new();
                 if let Err(e) = ctx.report(&mut out) {
                     return Some(Err(e.into()));
                 }
                 Some(Ok(out))
             }
-            Some(Err(e)) => Some(Err(e)),
+            Poll::Ready(Err(e)) => Some(Err(e)),
         }
     }
 }
@@ -175,6 +160,9 @@ impl wasmtime_wasi_io::IoView for Ctx {
         &mut self.table
     }
 }
+// SAFETY: only will consume this crate in single-threaded environment
+unsafe impl Send for Ctx {}
+unsafe impl Sync for Ctx {}
 
 impl embeddable::Embedding for Ctx {
     fn monotonic_now(&self) -> u64 {

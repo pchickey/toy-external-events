@@ -10,3 +10,4 @@ wasmtime.workspace = true
 wasmtime-wasi-io.workspace = true
 bytes.workspace = true
 futures-lite.workspace = true
+async-task.workspace = true
