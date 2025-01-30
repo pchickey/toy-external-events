@@ -7,4 +7,4 @@ edition = "2021"
 anyhow.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi-io.workspace = true
-pin-project-lite.workspace = true
+async-task.workspace = true

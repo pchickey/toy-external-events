@@ -204,7 +204,7 @@ name = "embeddable"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "pin-project-lite",
+ "async-task",
  "wasmtime",
  "wasmtime-wasi-io",
 ]

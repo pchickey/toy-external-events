@@ -6,8 +6,8 @@ use alloc::vec::Vec;
 use anyhow::Result;
 use core::future::Future;
 use core::pin::Pin;
-use core::task::{Context, Poll};
-use wasmtime::component::Resource;
+use core::task::{Context, Poll, Waker};
+use wasmtime::component::{Resource, ResourceTable};
 use wasmtime_wasi_io::{
     async_trait,
     poll::{subscribe, DynPollable, Pollable},
@@ -297,26 +297,18 @@ impl<E: Embedding> types::HostIncomingResponse for EImpl<E> {
 }
 
 pub struct FutureIncomingResponse {
-    // WRONG - this isnt the future that delivers the Result<IncomingResponse,_>, its a mailbox,
-    // delivered by the conclusion of some future thats running in a task. because we need this to
-    // resolve without awaiting for it. subscribing to it is optional, get has to work while just
-    // busy-looping in the worst case. so even though this mockup has a Pollable impl, its bogus.
-    fut: Pin<
-        Box<dyn Future<Output = Result<IncomingResponseResource, types::ErrorCode>> + Send + Sync>,
-    >,
+    // Task may be pending completion
+    task: Pin<Box<async_task::Task<Result<IncomingResponseResource, types::ErrorCode>>>>,
+    // Result of task, if it completed while awaiting in a Pollable
     res: Option<Result<IncomingResponseResource, types::ErrorCode>>,
+    // Indicates the completed task's result has been returned by get already
     gone: bool,
 }
 impl FutureIncomingResponse {
     // gets constructed in implementation of outgoing-handler.handle.
-    pub fn new(
-        fut: impl Future<Output = Result<IncomingResponseResource, types::ErrorCode>>
-            + Send
-            + Sync
-            + 'static,
-    ) -> Self {
+    pub fn new(task: async_task::Task<Result<IncomingResponseResource, types::ErrorCode>>) -> Self {
         Self {
-            fut: Box::pin(fut),
+            task: Box::pin(task),
             res: None,
             gone: false,
         }
@@ -332,8 +324,7 @@ impl Future for FutureIncomingResponse {
         if self.res.is_some() {
             return Poll::Ready(());
         }
-        let fut = core::pin::pin!(&mut self.fut);
-        match fut.poll(cx) {
+        match self.task.as_mut().poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(res) => {
                 self.res = Some(res);
@@ -359,10 +350,44 @@ impl<E: Embedding> types::HostFutureIncomingResponse for EImpl<E> {
     }
     fn get(
         &mut self,
-        _: Resource<types::FutureIncomingResponse>,
+        this: Resource<types::FutureIncomingResponse>,
     ) -> Result<Option<Result<Result<Resource<types::IncomingResponse>, types::ErrorCode>, ()>>>
     {
-        todo!()
+        fn res_into_table(
+            table: &mut ResourceTable,
+            res: Result<IncomingResponseResource, types::ErrorCode>,
+        ) -> Result<Result<Resource<types::IncomingResponse>, types::ErrorCode>> {
+            match res {
+                Ok(resource) => Ok(Ok(table.push(resource)?)),
+                Err(code) => Ok(Err(code)),
+            }
+        }
+
+        let this = self.table().get_mut(&this)?;
+        if let Some(res) = this.res.take() {
+            this.gone = true;
+            return Ok(Some(Ok(res_into_table(self.table(), res)?)));
+        }
+        if this.gone {
+            return Ok(Some(Err(())));
+        }
+        // Poll checks for task completion. Doing so in this way will replace any existing waker
+        // with a noop waker. This is ok because it will get a "real" waker when it is polled via a
+        // wasi Pollable if there is actually progress to be made in wasi:io/poll waiting on it.
+        // This operation should be very fast - in this crate's single threaded context, there are
+        // some uncontended atomic swaps in there, but otherwise its just checking state and
+        // returning the task's result if it is complete.
+        match this
+            .task
+            .as_mut()
+            .poll(&mut Context::from_waker(&noop_waker()))
+        {
+            Poll::Pending => Ok(None),
+            Poll::Ready(res) => {
+                this.gone = true;
+                return Ok(Some(Ok(res_into_table(self.table(), res)?)));
+            }
+        }
     }
     fn drop(&mut self, this: Resource<types::FutureIncomingResponse>) -> Result<()> {
         self.table().delete(this)?;
@@ -576,4 +601,22 @@ impl<E: Embedding> types::Host for EImpl<E> {
     ) -> Result<Option<types::ErrorCode>> {
         todo!()
     }
+}
+
+// Yanked from core::task::wake, which is unfortunately still unstable :/
+fn noop_waker() -> Waker {
+    use core::task::{RawWaker, RawWakerVTable};
+    const VTABLE: RawWakerVTable = RawWakerVTable::new(
+        // Cloning just returns a new no-op raw waker
+        |_| RAW,
+        // `wake` does nothing
+        |_| {},
+        // `wake_by_ref` does nothing
+        |_| {},
+        // Dropping does nothing as we don't allocate anything
+        |_| {},
+    );
+    const RAW: RawWaker = RawWaker::new(core::ptr::null(), &VTABLE);
+
+    unsafe { Waker::from_raw(RAW) }
 }
