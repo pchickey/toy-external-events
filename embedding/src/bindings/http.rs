@@ -571,6 +571,7 @@ impl types::HostFields for EmbeddingCtx {
             FieldsResource::Immut(fs) => Ok(fs.entries()),
         }
     }
+    // Very likely a more efficient implementation will exist, just a placeholder
     fn clone(&mut self, this: Resource<types::Fields>) -> Result<Resource<types::Fields>> {
         let entries = match self.table().get(&this)? {
             FieldsResource::Mut(fs) => fs.entries(),
@@ -585,18 +586,34 @@ impl types::HostFields for EmbeddingCtx {
     }
 }
 
-pub struct FutureTrailers;
+// Just stub this out completely until later.
+pub struct FutureTrailers {
+    gone: bool,
+}
+#[async_trait]
+impl Pollable for FutureTrailers {
+    async fn ready(&mut self) {}
+}
 
 impl types::HostFutureTrailers for EmbeddingCtx {
-    fn subscribe(&mut self, _: Resource<types::FutureTrailers>) -> Result<Resource<DynPollable>> {
-        todo!()
+    fn subscribe(
+        &mut self,
+        this: Resource<types::FutureTrailers>,
+    ) -> Result<Resource<DynPollable>> {
+        subscribe(self.table(), this)
     }
     fn get(
         &mut self,
-        _: Resource<types::FutureTrailers>,
+        this: Resource<types::FutureTrailers>,
     ) -> Result<Option<Result<Result<Option<Resource<types::Trailers>>, types::ErrorCode>, ()>>>
     {
-        todo!()
+        let this = self.table().get_mut(&this)?;
+        if this.gone {
+            Ok(Some(Err(())))
+        } else {
+            this.gone = true;
+            Ok(Some(Ok(Ok(None))))
+        }
     }
     fn drop(&mut self, this: Resource<types::FutureTrailers>) -> Result<()> {
         self.table().delete(this)?;
@@ -609,10 +626,31 @@ pub struct ResponseOutparamResource(crate::http::ResponseOutparam);
 impl types::HostResponseOutparam for EmbeddingCtx {
     fn set(
         &mut self,
-        _: Resource<types::ResponseOutparam>,
-        _: Result<Resource<types::OutgoingResponse>, types::ErrorCode>,
+        this: Resource<types::ResponseOutparam>,
+        result: Result<Resource<types::OutgoingResponse>, types::ErrorCode>,
     ) -> Result<()> {
-        todo!()
+        let this = self.table().delete(this)?;
+        match result {
+            Ok(out_resp) => {
+                let resp = self.table().delete(out_resp)?;
+                let headers = match resp.headers {
+                    FieldsResource::Mut(rc) => Rc::try_unwrap(rc).map_err(|rc| {
+                        anyhow!(
+                            "{} outstanding references to mut fields, should be impossible",
+                            Rc::strong_count(&rc)
+                        )
+                    })?,
+                    FieldsResource::Immut(_) => Err(anyhow!(
+                        "outgoing response contained immut fields, should be impossible"
+                    ))?,
+                };
+                this.0.send_success(resp.resp, headers, resp.body);
+            }
+            Err(e) => {
+                this.0.send_error(e);
+            }
+        }
+        Ok(())
     }
     fn drop(&mut self, this: Resource<types::ResponseOutparam>) -> Result<()> {
         self.table().delete(this)?;
@@ -693,8 +731,9 @@ impl types::HostRequestOptions for EmbeddingCtx {
 impl types::Host for EmbeddingCtx {
     fn http_error_code(
         &mut self,
-        _: Resource<wasmtime_wasi_io::streams::Error>,
+        this: Resource<wasmtime_wasi_io::streams::Error>,
     ) -> Result<Option<types::ErrorCode>> {
-        todo!()
+        let err = self.table().get(&this)?;
+        Ok(err.downcast_ref::<types::ErrorCode>().cloned())
     }
 }

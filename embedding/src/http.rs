@@ -1,32 +1,43 @@
 pub use crate::bindings::wasi::http::types::{
-    FieldName, FieldValue, HeaderError, Method, Scheme, StatusCode,
+    ErrorCode, FieldName, FieldValue, HeaderError, Method, Scheme, StatusCode,
 };
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-pub struct IncomingRequest {}
+// Placeholder fields. This will contain pointers to some external resource
+// and the methods will retrieve these values out of there.
+pub struct IncomingRequest {
+    pub method: Method,
+    pub path_with_query: Option<String>,
+    pub scheme: Option<Scheme>,
+    pub authority: Option<String>,
+}
 
 impl IncomingRequest {
     pub fn method(&self) -> Method {
-        todo!()
+        self.method.clone()
     }
     pub fn path_with_query(&self) -> Option<String> {
-        todo!()
+        self.path_with_query.clone()
     }
     pub fn scheme(&self) -> Option<Scheme> {
-        todo!()
+        self.scheme.clone()
     }
     pub fn authority(&self) -> Option<String> {
-        todo!()
+        self.authority.clone()
     }
 }
 
-pub struct IncomingResponse {}
+// Placeholder fields. This will contain pointers to some external resource
+// and the methods will retrieve these values out of there.
+pub struct IncomingResponse {
+    pub status_code: StatusCode,
+}
 
 impl IncomingResponse {
     pub fn status_code(&self) -> StatusCode {
-        todo!()
+        self.status_code.clone()
     }
 }
 
@@ -114,3 +125,16 @@ pub struct IncomingBody {}
 pub struct OutgoingBody {}
 
 pub struct ResponseOutparam {}
+impl ResponseOutparam {
+    pub fn send_success(
+        self,
+        _resp: OutgoingResponse,
+        _headers: Fields,
+        _body: Option<OutgoingBody>,
+    ) {
+        todo!()
+    }
+    pub fn send_error(self, _err: ErrorCode) {
+        todo!()
+    }
+}
