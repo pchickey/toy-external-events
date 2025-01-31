@@ -380,7 +380,7 @@ impl types::HostFutureIncomingResponse for EmbeddingCtx {
         match this
             .task
             .as_mut()
-            .poll(&mut Context::from_waker(&noop_waker()))
+            .poll(&mut Context::from_waker(&crate::noop_waker::noop_waker()))
         {
             Poll::Pending => Ok(None),
             Poll::Ready(res) => {
@@ -601,22 +601,4 @@ impl types::Host for EmbeddingCtx {
     ) -> Result<Option<types::ErrorCode>> {
         todo!()
     }
-}
-
-// Yanked from core::task::wake, which is unfortunately still unstable :/
-fn noop_waker() -> Waker {
-    use core::task::{RawWaker, RawWakerVTable};
-    const VTABLE: RawWakerVTable = RawWakerVTable::new(
-        // Cloning just returns a new no-op raw waker
-        |_| RAW,
-        // `wake` does nothing
-        |_| {},
-        // `wake_by_ref` does nothing
-        |_| {},
-        // Dropping does nothing as we don't allocate anything
-        |_| {},
-    );
-    const RAW: RawWaker = RawWaker::new(core::ptr::null(), &VTABLE);
-
-    unsafe { Waker::from_raw(RAW) }
 }

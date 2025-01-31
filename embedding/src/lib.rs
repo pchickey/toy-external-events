@@ -4,6 +4,7 @@ extern crate alloc;
 mod bindings;
 mod ctx;
 mod http;
+mod noop_waker;
 mod runtime;
 
 use ctx::EmbeddingCtx;
@@ -19,7 +20,7 @@ use bytes::Bytes;
 use core::cell::{Cell, RefCell};
 use core::future::Future;
 use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use core::task::{Context, Poll};
 
 use wasmtime_wasi_io::poll::Pollable;
 use wasmtime_wasi_io::streams::{InputStream, OutputStream};
@@ -119,7 +120,7 @@ impl RunningComponent {
         match self
             .output
             .as_mut()
-            .poll(&mut Context::from_waker(&noop_waker()))
+            .poll(&mut Context::from_waker(&noop_waker::noop_waker()))
         {
             Poll::Pending => None,
             Poll::Ready(Ok(ctx)) => {
@@ -237,22 +238,4 @@ impl OutputStream for TimestampedWrites {
     fn flush(&mut self) -> wasmtime_wasi_io::streams::StreamResult<()> {
         Ok(())
     }
-}
-
-// Yanked from core::task::wake, which is unfortunately still unstable :/
-fn noop_waker() -> Waker {
-    use core::task::{RawWaker, RawWakerVTable};
-    const VTABLE: RawWakerVTable = RawWakerVTable::new(
-        // Cloning just returns a new no-op raw waker
-        |_| RAW,
-        // `wake` does nothing
-        |_| {},
-        // `wake_by_ref` does nothing
-        |_| {},
-        // Dropping does nothing as we don't allocate anything
-        |_| {},
-    );
-    const RAW: RawWaker = RawWaker::new(core::ptr::null(), &VTABLE);
-
-    unsafe { Waker::from_raw(RAW) }
 }
