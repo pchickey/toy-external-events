@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -92,22 +92,28 @@ pub struct OutgoingResponseResource {
 impl OutgoingResponseResource {
     pub fn new(
         resp: crate::http::OutgoingResponse,
-        headers: crate::http::Fields,
+        headers: FieldsResource,
         body: crate::http::OutgoingBody,
     ) -> Self {
         Self {
             resp,
-            headers: FieldsResource::new(headers),
+            headers,
             body: Some(body),
         }
     }
 }
 
 impl types::HostOutgoingResponse for EmbeddingCtx {
-    fn new(&mut self, _: Resource<types::Headers>) -> Result<Resource<types::OutgoingResponse>> {
-        // FIXME: need some method in Embedding here that returns (impl OutgoingResponse, impl
-        // OutgoingBody). then construct the OutgoingResponseResource and stick it into the table.
-        todo!()
+    fn new(
+        &mut self,
+        headers: Resource<types::Headers>,
+    ) -> Result<Resource<types::OutgoingResponse>> {
+        let headers = self.table().delete(headers)?.freeze()?;
+        Ok(self.table().push(OutgoingResponseResource::new(
+            crate::http::OutgoingResponse {},
+            headers,
+            crate::http::OutgoingBody {},
+        ))?)
     }
     fn status_code(
         &mut self,
@@ -156,22 +162,28 @@ pub struct OutgoingRequestResource {
 impl OutgoingRequestResource {
     pub fn new(
         req: crate::http::OutgoingRequest,
-        headers: crate::http::Fields,
+        headers: FieldsResource,
         body: crate::http::OutgoingBody,
     ) -> Self {
         Self {
             req,
-            headers: FieldsResource::new(headers),
+            headers,
             body: Some(body),
         }
     }
 }
 
 impl types::HostOutgoingRequest for EmbeddingCtx {
-    fn new(&mut self, _: Resource<types::Headers>) -> Result<Resource<types::OutgoingRequest>> {
-        // FIXME: need some method in Embedding here that returns (impl OutgoingRequest, impl
-        // OutgoingBody). then construct the OutgoingRequestResource and stick it into the table.
-        todo!()
+    fn new(
+        &mut self,
+        headers: Resource<types::Headers>,
+    ) -> Result<Resource<types::OutgoingRequest>> {
+        let headers = self.table().delete(headers)?.freeze()?;
+        Ok(self.table().push(OutgoingRequestResource::new(
+            crate::http::OutgoingRequest {},
+            headers,
+            crate::http::OutgoingBody {},
+        ))?)
     }
     fn body(
         &mut self,
@@ -259,7 +271,7 @@ impl IncomingResponseResource {
         body: crate::http::IncomingBody,
     ) -> Self {
         Self {
-            resp: resp,
+            resp,
             headers: FieldsResource::new(headers),
             body: Some(body),
         }
@@ -440,10 +452,28 @@ impl types::HostOutgoingBody for EmbeddingCtx {
 
 #[derive(Clone)]
 #[allow(dead_code)] // Temporary - while HostFields and Fields trait are just stubs
-pub struct FieldsResource(Rc<crate::http::Fields>);
+pub enum FieldsResource {
+    Mut(Rc<crate::http::Fields>),
+    Immut(Rc<crate::http::ImmutFields>),
+}
 impl FieldsResource {
     pub fn new(fields: crate::http::Fields) -> Self {
-        Self(Rc::new(fields))
+        Self::Mut(Rc::new(fields))
+    }
+
+    pub fn freeze(self) -> Result<Self> {
+        match self {
+            Self::Immut(rc) => Ok(Self::Immut(rc)),
+            Self::Mut(rc) => {
+                let fields = Rc::try_unwrap(rc).map_err(|rc| {
+                    anyhow!(
+                        "{} outstanding references to mut fields, should be impossible",
+                        Rc::strong_count(&rc)
+                    )
+                })?;
+                Ok(Self::Immut(Rc::new(fields.into_immut())))
+            }
+        }
     }
 }
 // SAFETY: single-threaded embedding only
@@ -452,7 +482,9 @@ unsafe impl Sync for FieldsResource {}
 
 impl types::HostFields for EmbeddingCtx {
     fn new(&mut self) -> Result<Resource<types::Fields>> {
-        todo!()
+        Ok(self
+            .table()
+            .push(FieldsResource::new(crate::http::Fields {}))?)
     }
     fn from_list(
         &mut self,
