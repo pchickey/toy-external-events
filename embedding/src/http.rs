@@ -1,5 +1,6 @@
 pub use crate::bindings::wasi::http::types::{Method, Scheme, StatusCode};
 use alloc::string::String;
+use core::time::Duration;
 
 pub struct IncomingRequest {}
 
@@ -69,7 +70,19 @@ impl OutgoingRequest {
 }
 
 pub struct Fields {}
-pub struct RequestOptions {}
+impl Fields {
+    pub fn into_immut(self) -> ImmutFields {
+        ImmutFields {}
+    }
+}
+pub struct ImmutFields {}
+
+#[derive(Default)]
+pub struct RequestOptions {
+    pub connect_timeout: Option<Duration>,
+    pub first_byte_timeout: Option<Duration>,
+    pub between_bytes_timeout: Option<Duration>,
+}
 
 pub struct IncomingBody {}
 pub struct OutgoingBody {}

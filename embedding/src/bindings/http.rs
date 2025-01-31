@@ -543,50 +543,69 @@ impl types::HostResponseOutparam for EmbeddingCtx {
     }
 }
 
+fn to_wasi_duration(d: core::time::Duration) -> monotonic_clock::Duration {
+    d.as_nanos()
+        .try_into()
+        .unwrap_or(monotonic_clock::Duration::MAX)
+}
+fn from_wasi_duration(d: monotonic_clock::Duration) -> core::time::Duration {
+    core::time::Duration::from_nanos(d)
+}
+
 pub struct RequestOptionsResource(crate::http::RequestOptions);
 
 impl types::HostRequestOptions for EmbeddingCtx {
     fn new(&mut self) -> Result<Resource<types::RequestOptions>> {
-        todo!()
+        let opts = crate::http::RequestOptions::default();
+        Ok(self.table().push(RequestOptionsResource(opts))?)
     }
     fn connect_timeout(
         &mut self,
-        _: Resource<types::RequestOptions>,
+        this: Resource<types::RequestOptions>,
     ) -> Result<Option<monotonic_clock::Duration>> {
-        todo!()
+        let this = self.table().get(&this)?;
+        Ok(this.0.connect_timeout.map(to_wasi_duration))
     }
     fn set_connect_timeout(
         &mut self,
-        _: Resource<types::RequestOptions>,
-        _: Option<monotonic_clock::Duration>,
+        this: Resource<types::RequestOptions>,
+        val: Option<monotonic_clock::Duration>,
     ) -> Result<Result<(), ()>> {
-        todo!()
+        let this = self.table().get_mut(&this)?;
+        this.0.connect_timeout = val.map(from_wasi_duration);
+        Ok(Ok(()))
     }
     fn first_byte_timeout(
         &mut self,
-        _: Resource<types::RequestOptions>,
+        this: Resource<types::RequestOptions>,
     ) -> Result<Option<monotonic_clock::Duration>> {
-        todo!()
+        let this = self.table().get(&this)?;
+        Ok(this.0.first_byte_timeout.map(to_wasi_duration))
     }
     fn set_first_byte_timeout(
         &mut self,
-        _: Resource<types::RequestOptions>,
-        _: Option<monotonic_clock::Duration>,
+        this: Resource<types::RequestOptions>,
+        val: Option<monotonic_clock::Duration>,
     ) -> Result<Result<(), ()>> {
-        todo!()
+        let this = self.table().get_mut(&this)?;
+        this.0.first_byte_timeout = val.map(from_wasi_duration);
+        Ok(Ok(()))
     }
     fn between_bytes_timeout(
         &mut self,
-        _: Resource<types::RequestOptions>,
+        this: Resource<types::RequestOptions>,
     ) -> Result<Option<monotonic_clock::Duration>> {
-        todo!()
+        let this = self.table().get(&this)?;
+        Ok(this.0.between_bytes_timeout.map(to_wasi_duration))
     }
     fn set_between_bytes_timeout(
         &mut self,
-        _: Resource<types::RequestOptions>,
-        _: Option<monotonic_clock::Duration>,
+        this: Resource<types::RequestOptions>,
+        val: Option<monotonic_clock::Duration>,
     ) -> Result<Result<(), ()>> {
-        todo!()
+        let this = self.table().get_mut(&this)?;
+        this.0.first_byte_timeout = val.map(from_wasi_duration);
+        Ok(Ok(()))
     }
     fn drop(&mut self, this: Resource<types::RequestOptions>) -> Result<()> {
         self.table().delete(this)?;
