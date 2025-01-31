@@ -484,55 +484,100 @@ impl types::HostFields for EmbeddingCtx {
     fn new(&mut self) -> Result<Resource<types::Fields>> {
         Ok(self
             .table()
-            .push(FieldsResource::new(crate::http::Fields {}))?)
+            .push(FieldsResource::new(crate::http::Fields::new()))?)
     }
     fn from_list(
         &mut self,
-        _: Vec<(types::FieldKey, types::FieldValue)>,
+        values: Vec<(types::FieldKey, types::FieldValue)>,
     ) -> Result<Result<Resource<types::Fields>, types::HeaderError>> {
-        todo!()
+        let this = crate::http::Fields::new();
+        for (key, value) in values {
+            if let Err(herr) = this.insert(key, value) {
+                return Ok(Err(herr));
+            }
+        }
+        Ok(Ok(self.table().push(FieldsResource::new(this))?))
     }
     fn get(
         &mut self,
-        _: Resource<types::Fields>,
-        _: types::FieldKey,
+        this: Resource<types::Fields>,
+        key: types::FieldKey,
     ) -> Result<Vec<types::FieldValue>> {
-        todo!()
+        match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => Ok(fs.get(&key).into_iter().cloned().collect()),
+            FieldsResource::Immut(fs) => Ok(fs.get(&key).into_iter().cloned().collect()),
+        }
     }
-    fn has(&mut self, _: Resource<types::Fields>, _: types::FieldKey) -> Result<bool> {
-        todo!()
+    fn has(&mut self, this: Resource<types::Fields>, key: types::FieldKey) -> Result<bool> {
+        match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => Ok(!fs.get(&key).is_empty()),
+            FieldsResource::Immut(fs) => Ok(!fs.get(&key).is_empty()),
+        }
     }
     fn set(
         &mut self,
-        _: Resource<types::Fields>,
-        _: types::FieldKey,
-        _: Vec<types::FieldValue>,
+        this: Resource<types::Fields>,
+        key: types::FieldKey,
+        values: Vec<types::FieldValue>,
     ) -> Result<Result<(), types::HeaderError>> {
-        todo!()
+        match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => {
+                fs.delete(&key);
+                for value in values {
+                    if let Err(e) = fs.insert(key.clone(), value) {
+                        return Ok(Err(e));
+                    }
+                }
+                Ok(Ok(()))
+            }
+            FieldsResource::Immut(_) => Ok(Err(types::HeaderError::Immutable)),
+        }
     }
     fn delete(
         &mut self,
-        _: Resource<types::Fields>,
-        _: types::FieldKey,
+        this: Resource<types::Fields>,
+        key: types::FieldKey,
     ) -> Result<Result<(), types::HeaderError>> {
-        todo!()
+        match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => {
+                fs.delete(&key);
+                Ok(Ok(()))
+            }
+            FieldsResource::Immut(_) => Ok(Err(types::HeaderError::Immutable)),
+        }
     }
     fn append(
         &mut self,
-        _: Resource<types::Fields>,
-        _: types::FieldKey,
-        _: types::FieldValue,
+        this: Resource<types::Fields>,
+        key: types::FieldKey,
+        value: types::FieldValue,
     ) -> Result<Result<(), types::HeaderError>> {
-        todo!()
+        match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => {
+                if let Err(e) = fs.insert(key, value) {
+                    return Ok(Err(e));
+                }
+                Ok(Ok(()))
+            }
+            FieldsResource::Immut(_) => Ok(Err(types::HeaderError::Immutable)),
+        }
     }
     fn entries(
         &mut self,
-        _: Resource<types::Fields>,
+        this: Resource<types::Fields>,
     ) -> Result<Vec<(types::FieldKey, types::FieldValue)>> {
-        todo!()
+        match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => Ok(fs.entries()),
+            FieldsResource::Immut(fs) => Ok(fs.entries()),
+        }
     }
-    fn clone(&mut self, _: Resource<types::Fields>) -> Result<Resource<types::Fields>> {
-        todo!()
+    fn clone(&mut self, this: Resource<types::Fields>) -> Result<Resource<types::Fields>> {
+        let entries = match self.table().get(&this)? {
+            FieldsResource::Mut(fs) => fs.entries(),
+            FieldsResource::Immut(fs) => fs.entries(),
+        };
+        self.from_list(entries)
+            .map(|r| r.expect("from_list wont reject entries from another fields"))
     }
     fn drop(&mut self, this: Resource<types::Fields>) -> Result<()> {
         self.table().delete(this)?;

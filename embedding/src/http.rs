@@ -1,5 +1,8 @@
-pub use crate::bindings::wasi::http::types::{Method, Scheme, StatusCode};
+pub use crate::bindings::wasi::http::types::{
+    FieldName, FieldValue, HeaderError, Method, Scheme, StatusCode,
+};
 use alloc::string::String;
+use alloc::vec::Vec;
 use core::time::Duration;
 
 pub struct IncomingRequest {}
@@ -71,11 +74,34 @@ impl OutgoingRequest {
 
 pub struct Fields {}
 impl Fields {
+    pub fn new() -> Self {
+        Fields {}
+    }
+    pub fn insert(&self, _name: FieldName, _value: FieldValue) -> Result<(), HeaderError> {
+        todo!()
+    }
+    pub fn get(&self, _name: &FieldName) -> Vec<&FieldValue> {
+        todo!()
+    }
+    pub fn delete(&self, _name: &FieldName) {
+        todo!()
+    }
+    pub fn entries(&self) -> Vec<(FieldName, FieldValue)> {
+        todo!()
+    }
     pub fn into_immut(self) -> ImmutFields {
         ImmutFields {}
     }
 }
 pub struct ImmutFields {}
+impl ImmutFields {
+    pub fn get(&self, _name: &FieldName) -> Vec<&FieldValue> {
+        todo!()
+    }
+    pub fn entries(&self) -> Vec<(FieldName, FieldValue)> {
+        todo!()
+    }
+}
 
 #[derive(Default)]
 pub struct RequestOptions {
