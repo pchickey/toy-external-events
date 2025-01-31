@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use anyhow::Result;
 use core::future::Future;
 use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use core::task::{Context, Poll};
 use wasmtime::component::{Resource, ResourceTable};
 use wasmtime_wasi_io::{
     async_trait,

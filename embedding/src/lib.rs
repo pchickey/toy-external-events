@@ -2,30 +2,26 @@
 extern crate alloc;
 
 mod bindings;
+mod clock;
 mod ctx;
 mod http;
 mod noop_waker;
 mod runtime;
+mod streams;
 
+use clock::Clock;
 use ctx::EmbeddingCtx;
 use runtime::Executor;
 
 use alloc::boxed::Box;
-use alloc::collections::VecDeque;
-use alloc::rc::Rc;
 use alloc::string::String;
 use anyhow::Result;
 use async_task::Task;
-use bytes::Bytes;
-use core::cell::{Cell, RefCell};
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use wasmtime_wasi_io::poll::Pollable;
-use wasmtime_wasi_io::streams::{InputStream, OutputStream};
-
-use wasmtime::component::{Component, Linker, ResourceTable};
+use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
 pub struct Runtime {
@@ -132,110 +128,5 @@ impl RunningComponent {
             }
             Poll::Ready(Err(e)) => Some(Err(e)),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Clock(Rc<Cell<u64>>);
-impl Clock {
-    pub fn new() -> Self {
-        Clock(Rc::new(Cell::new(0)))
-    }
-    pub fn get(&self) -> u64 {
-        self.0.get()
-    }
-    fn set(&self, to: u64) {
-        //println!("clock advancing to {to}");
-        self.0.set(to)
-    }
-}
-// SAFETY: only will consume this crate in single-threaded environment
-unsafe impl Send for Clock {}
-unsafe impl Sync for Clock {}
-
-#[derive(Debug, Clone)]
-pub struct Deadline {
-    clock: Clock,
-    due: u64,
-}
-impl Deadline {
-    fn new(clock: Clock, due: u64) -> Self {
-        Self { clock, due }
-    }
-}
-impl Future for Deadline {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let now = self.clock.get();
-        if now < self.due {
-            Executor::current().push_deadline(self.due, cx.waker().clone());
-            Poll::Pending
-        } else {
-            Poll::Ready(())
-        }
-    }
-}
-// SAFETY: only will consume this crate in single-threaded environment
-unsafe impl Send for Deadline {}
-unsafe impl Sync for Deadline {}
-
-#[wasmtime_wasi_io::async_trait]
-impl Pollable for Deadline {
-    async fn ready(&mut self) {
-        self.clone().await
-    }
-}
-
-struct NeverReadable;
-#[wasmtime_wasi_io::async_trait]
-impl Pollable for NeverReadable {
-    async fn ready(&mut self) {
-        futures_lite::future::pending().await
-    }
-}
-impl InputStream for NeverReadable {
-    fn read(&mut self, _: usize) -> wasmtime_wasi_io::streams::StreamResult<Bytes> {
-        unreachable!("never ready for reading")
-    }
-}
-
-#[derive(Clone)]
-struct TimestampedWrites {
-    clock: Clock,
-    log: Rc<RefCell<VecDeque<(u64, Bytes)>>>,
-}
-impl TimestampedWrites {
-    fn new(clock: Clock) -> Self {
-        Self {
-            clock,
-            log: Rc::new(RefCell::new(VecDeque::new())),
-        }
-    }
-    fn report(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
-        for (time, line) in self.log.borrow_mut().iter() {
-            write!(out, "{:08} {:?}\n", time, String::from_utf8_lossy(line))?;
-        }
-        Ok(())
-    }
-}
-// SAFETY: only will consume this crate in single-threaded environment
-unsafe impl Send for TimestampedWrites {}
-unsafe impl Sync for TimestampedWrites {}
-
-#[wasmtime_wasi_io::async_trait]
-impl Pollable for TimestampedWrites {
-    async fn ready(&mut self) {}
-}
-impl OutputStream for TimestampedWrites {
-    fn check_write(&mut self) -> wasmtime_wasi_io::streams::StreamResult<usize> {
-        Ok(usize::MAX)
-    }
-    fn write(&mut self, contents: Bytes) -> wasmtime_wasi_io::streams::StreamResult<()> {
-        let time = self.clock.get();
-        self.log.borrow_mut().push_back((time, contents));
-        Ok(())
-    }
-    fn flush(&mut self) -> wasmtime_wasi_io::streams::StreamResult<()> {
-        Ok(())
     }
 }

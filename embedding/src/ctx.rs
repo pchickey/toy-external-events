@@ -1,4 +1,5 @@
-use crate::{Clock, Deadline, NeverReadable, TimestampedWrites};
+use crate::clock::{Clock, Deadline};
+use crate::streams::{NeverReadable, TimestampedWrites};
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi_io::{
     poll::Pollable,
