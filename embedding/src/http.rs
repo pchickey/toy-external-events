@@ -3,6 +3,7 @@ pub use crate::bindings::wasi::http::types::{
 };
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::{Cell, RefCell};
 use core::time::Duration;
 
 // Placeholder fields. This will contain pointers to some external resource
@@ -41,48 +42,84 @@ impl IncomingResponse {
     }
 }
 
-pub struct OutgoingResponse {}
+// Placeholder fields. This will contain pointers to some external resource
+// and the methods will set/get values out of there.
+pub struct OutgoingResponse {
+    pub status_code: Cell<StatusCode>,
+}
 
 impl OutgoingResponse {
-    pub fn status_code(&self) -> StatusCode {
-        todo!()
+    pub fn new() -> Self {
+        OutgoingResponse {
+            status_code: Cell::new(200),
+        }
     }
-    pub fn set_status_code(&self, _: StatusCode) -> Result<(), ()> {
-        todo!()
+
+    pub fn status_code(&self) -> StatusCode {
+        self.status_code.get()
+    }
+    pub fn set_status_code(&self, code: StatusCode) -> Result<(), ()> {
+        if code < 600 {
+            self.status_code.set(code);
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
 
-pub struct OutgoingRequest {}
+// Placeholder fields. This will contain pointers to some external resource
+// and the methods will set/get values out of there.
+pub struct OutgoingRequest {
+    pub method: RefCell<Method>,
+    pub path_with_query: RefCell<Option<String>>,
+    pub scheme: RefCell<Option<Scheme>>,
+    pub authority: RefCell<Option<String>>,
+}
 impl OutgoingRequest {
-    pub fn method(&self) -> Method {
-        todo!()
+    pub fn new() -> Self {
+        OutgoingRequest {
+            method: RefCell::new(Method::Get),
+            path_with_query: RefCell::new(None),
+            scheme: RefCell::new(None),
+            authority: RefCell::new(None),
+        }
     }
-    pub fn set_method(&self, _: Method) -> Result<(), ()> {
-        todo!()
+
+    pub fn method(&self) -> Method {
+        self.method.borrow().clone()
+    }
+    pub fn set_method(&self, meth: Method) -> Result<(), ()> {
+        *self.method.borrow_mut() = meth;
+        Ok(())
     }
 
     pub fn path_with_query(&self) -> Option<String> {
-        todo!()
+        self.path_with_query.borrow().clone()
     }
-    pub fn set_path_with_query(&self, _: Option<String>) -> Result<(), ()> {
-        todo!()
+    pub fn set_path_with_query(&self, pwq: Option<String>) -> Result<(), ()> {
+        *self.path_with_query.borrow_mut() = pwq;
+        Ok(())
     }
 
     pub fn scheme(&self) -> Option<Scheme> {
-        todo!()
+        self.scheme.borrow().clone()
     }
-    pub fn set_scheme(&self, _: Option<Scheme>) -> Result<(), ()> {
-        todo!()
+    pub fn set_scheme(&self, scheme: Option<Scheme>) -> Result<(), ()> {
+        *self.scheme.borrow_mut() = scheme;
+        Ok(())
     }
 
     pub fn authority(&self) -> Option<String> {
-        todo!()
+        self.authority.borrow().clone()
     }
-    pub fn set_authority(&self, _: Option<String>) -> Result<(), ()> {
-        todo!()
+    pub fn set_authority(&self, auth: Option<String>) -> Result<(), ()> {
+        *self.authority.borrow_mut() = auth;
+        Ok(())
     }
 }
 
+// Not doing placeholders here for the moment
 pub struct Fields {}
 impl Fields {
     pub fn new() -> Self {
@@ -92,25 +129,27 @@ impl Fields {
         todo!()
     }
     pub fn get(&self, _name: &FieldName) -> Vec<&FieldValue> {
-        todo!()
+        Vec::new()
     }
     pub fn delete(&self, _name: &FieldName) {
         todo!()
     }
     pub fn entries(&self) -> Vec<(FieldName, FieldValue)> {
-        todo!()
+        Vec::new()
     }
     pub fn into_immut(self) -> ImmutFields {
         ImmutFields {}
     }
 }
+
+// Not doing placeholders here for the moment
 pub struct ImmutFields {}
 impl ImmutFields {
     pub fn get(&self, _name: &FieldName) -> Vec<&FieldValue> {
-        todo!()
+        Vec::new()
     }
     pub fn entries(&self) -> Vec<(FieldName, FieldValue)> {
-        todo!()
+        Vec::new()
     }
 }
 
@@ -121,9 +160,12 @@ pub struct RequestOptions {
     pub between_bytes_timeout: Option<Duration>,
 }
 
+// putting off figuring out bodies for later
 pub struct IncomingBody {}
 pub struct OutgoingBody {}
 
+// This will contain some pointers that know where to write an outgoing response into the
+// embedding???
 pub struct ResponseOutparam {}
 impl ResponseOutparam {
     pub fn send_success(

@@ -110,7 +110,7 @@ impl types::HostOutgoingResponse for EmbeddingCtx {
     ) -> Result<Resource<types::OutgoingResponse>> {
         let headers = self.table().delete(headers)?.freeze()?;
         Ok(self.table().push(OutgoingResponseResource::new(
-            crate::http::OutgoingResponse {},
+            crate::http::OutgoingResponse::new(),
             headers,
             crate::http::OutgoingBody {},
         ))?)
@@ -180,7 +180,7 @@ impl types::HostOutgoingRequest for EmbeddingCtx {
     ) -> Result<Resource<types::OutgoingRequest>> {
         let headers = self.table().delete(headers)?.freeze()?;
         Ok(self.table().push(OutgoingRequestResource::new(
-            crate::http::OutgoingRequest {},
+            crate::http::OutgoingRequest::new(),
             headers,
             crate::http::OutgoingBody {},
         ))?)
