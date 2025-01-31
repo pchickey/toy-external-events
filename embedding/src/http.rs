@@ -1,43 +1,77 @@
 pub use crate::bindings::wasi::http::types::{Method, Scheme, StatusCode};
 use alloc::string::String;
 
-pub trait IncomingRequest: Send {
-    fn method(&self) -> Method;
-    fn path_with_query(&self) -> Option<String>;
-    fn scheme(&self) -> Option<Scheme>;
-    fn authority(&self) -> Option<String>;
-}
-pub trait IncomingResponse: Send {
-    fn status_code(&self) -> StatusCode;
-}
-pub trait OutgoingResponse: Send {
-    fn status_code(&self) -> StatusCode;
-    fn set_status_code(&self, _: StatusCode) -> Result<(), ()>;
-}
+pub struct IncomingRequest {}
 
-pub trait OutgoingRequest: Send {
-    fn method(&self) -> Method;
-    fn set_method(&self, _: Method) -> Result<(), ()>;
-
-    fn path_with_query(&self) -> Option<String>;
-    fn set_path_with_query(&self, _: Option<String>) -> Result<(), ()>;
-
-    fn scheme(&self) -> Option<Scheme>;
-    fn set_scheme(&self, _: Option<Scheme>) -> Result<(), ()>;
-
-    fn authority(&self) -> Option<String>;
-    fn set_authority(&self, _: Option<String>) -> Result<(), ()>;
+impl IncomingRequest {
+    pub fn method(&self) -> Method {
+        todo!()
+    }
+    pub fn path_with_query(&self) -> Option<String> {
+        todo!()
+    }
+    pub fn scheme(&self) -> Option<Scheme> {
+        todo!()
+    }
+    pub fn authority(&self) -> Option<String> {
+        todo!()
+    }
 }
 
-// TODO: these have pretty straightforward set of getters/setters reflecting
-// the resource
-pub trait Fields: Send {}
-pub trait RequestOptions: Send {}
+pub struct IncomingResponse {}
 
-// FIXME: idk if either of these are even traits. design just not fleshed out for these,
-// need to keep thinking about it.
-pub trait IncomingBody: Send {}
-pub trait OutgoingBody: Send {}
+impl IncomingResponse {
+    pub fn status_code(&self) -> StatusCode {
+        todo!()
+    }
+}
 
-// FIXME: not fleshed out either, idk
-pub trait ResponseOutparam: Send {}
+pub struct OutgoingResponse {}
+
+impl OutgoingResponse {
+    pub fn status_code(&self) -> StatusCode {
+        todo!()
+    }
+    pub fn set_status_code(&self, _: StatusCode) -> Result<(), ()> {
+        todo!()
+    }
+}
+
+pub struct OutgoingRequest {}
+impl OutgoingRequest {
+    pub fn method(&self) -> Method {
+        todo!()
+    }
+    pub fn set_method(&self, _: Method) -> Result<(), ()> {
+        todo!()
+    }
+
+    pub fn path_with_query(&self) -> Option<String> {
+        todo!()
+    }
+    pub fn set_path_with_query(&self, _: Option<String>) -> Result<(), ()> {
+        todo!()
+    }
+
+    pub fn scheme(&self) -> Option<Scheme> {
+        todo!()
+    }
+    pub fn set_scheme(&self, _: Option<Scheme>) -> Result<(), ()> {
+        todo!()
+    }
+
+    pub fn authority(&self) -> Option<String> {
+        todo!()
+    }
+    pub fn set_authority(&self, _: Option<String>) -> Result<(), ()> {
+        todo!()
+    }
+}
+
+pub struct Fields {}
+pub struct RequestOptions {}
+
+pub struct IncomingBody {}
+pub struct OutgoingBody {}
+
+pub struct ResponseOutparam {}

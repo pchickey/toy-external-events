@@ -20,9 +20,9 @@ use super::wasi::http::types;
 
 /// bindgen with clause makes types::IncomingRequest an alias to this:
 pub struct IncomingRequestResource {
-    req: Box<dyn crate::http::IncomingRequest>,
+    req: crate::http::IncomingRequest,
     headers: FieldsResource,
-    body: Option<Box<dyn crate::http::IncomingBody>>,
+    body: Option<crate::http::IncomingBody>,
 }
 
 impl IncomingRequestResource {
@@ -30,14 +30,14 @@ impl IncomingRequestResource {
     // over the instance.wasi_http_incoming_handler().call_handle(&mut store, ...) that constructs
     // this resource and the response-outparam.
     pub fn new(
-        req: impl crate::http::IncomingRequest + 'static,
-        headers: impl crate::http::Fields + 'static,
-        body: impl crate::http::IncomingBody + 'static,
+        req: crate::http::IncomingRequest,
+        headers: crate::http::Fields,
+        body: crate::http::IncomingBody,
     ) -> Self {
         Self {
-            req: Box::new(req),
+            req,
             headers: FieldsResource::new(headers),
-            body: Some(Box::new(body)),
+            body: Some(body),
         }
     }
 }
@@ -73,7 +73,7 @@ impl types::HostIncomingRequest for EmbeddingCtx {
         let table = self.table();
         // Inner result: only return the IncomingBody resource once. Subsequent returns error.
         if let Some(body) = table.get_mut(&this)?.body.take() {
-            Ok(Ok(table.push(body)?))
+            Ok(Ok(table.push(IncomingBodyResource(body))?))
         } else {
             Ok(Err(()))
         }
@@ -85,20 +85,20 @@ impl types::HostIncomingRequest for EmbeddingCtx {
 }
 
 pub struct OutgoingResponseResource {
-    resp: Box<dyn crate::http::OutgoingResponse>,
+    resp: crate::http::OutgoingResponse,
     headers: FieldsResource,
-    body: Option<Box<dyn crate::http::OutgoingBody>>,
+    body: Option<crate::http::OutgoingBody>,
 }
 impl OutgoingResponseResource {
     pub fn new(
-        resp: impl crate::http::OutgoingResponse + 'static,
-        headers: impl crate::http::Fields + 'static,
-        body: impl crate::http::OutgoingBody + 'static,
+        resp: crate::http::OutgoingResponse,
+        headers: crate::http::Fields,
+        body: crate::http::OutgoingBody,
     ) -> Self {
         Self {
-            resp: Box::new(resp),
+            resp,
             headers: FieldsResource::new(headers),
-            body: Some(Box::new(body)),
+            body: Some(body),
         }
     }
 }
@@ -137,7 +137,7 @@ impl types::HostOutgoingResponse for EmbeddingCtx {
         let table = self.table();
         // Inner result: only return the OutgoingBody resource once. Subsequent returns error.
         if let Some(body) = table.get_mut(&this)?.body.take() {
-            Ok(Ok(table.push(body)?))
+            Ok(Ok(table.push(OutgoingBodyResource(body))?))
         } else {
             Ok(Err(()))
         }
@@ -149,20 +149,20 @@ impl types::HostOutgoingResponse for EmbeddingCtx {
 }
 
 pub struct OutgoingRequestResource {
-    req: Box<dyn crate::http::OutgoingRequest>,
+    req: crate::http::OutgoingRequest,
     headers: FieldsResource,
-    body: Option<Box<dyn crate::http::OutgoingBody>>,
+    body: Option<crate::http::OutgoingBody>,
 }
 impl OutgoingRequestResource {
     pub fn new(
-        req: impl crate::http::OutgoingRequest + 'static,
-        headers: impl crate::http::Fields + 'static,
-        body: impl crate::http::OutgoingBody + 'static,
+        req: crate::http::OutgoingRequest,
+        headers: crate::http::Fields,
+        body: crate::http::OutgoingBody,
     ) -> Self {
         Self {
-            req: Box::new(req),
+            req,
             headers: FieldsResource::new(headers),
-            body: Some(Box::new(body)),
+            body: Some(body),
         }
     }
 }
@@ -180,7 +180,7 @@ impl types::HostOutgoingRequest for EmbeddingCtx {
         let table = self.table();
         // Inner result: only return the OutgoingBody resource once. Subsequent returns error.
         if let Some(body) = table.get_mut(&this)?.body.take() {
-            Ok(Ok(table.push(body)?))
+            Ok(Ok(table.push(OutgoingBodyResource(body))?))
         } else {
             Ok(Err(()))
         }
@@ -244,9 +244,9 @@ impl types::HostOutgoingRequest for EmbeddingCtx {
 
 /// bindgen with clause makes types::IncomingResponse an alias to this:
 pub struct IncomingResponseResource {
-    resp: Box<dyn crate::http::IncomingResponse>,
+    resp: crate::http::IncomingResponse,
     headers: FieldsResource,
-    body: Option<Box<dyn crate::http::IncomingBody>>,
+    body: Option<crate::http::IncomingBody>,
 }
 
 impl IncomingResponseResource {
@@ -254,14 +254,14 @@ impl IncomingResponseResource {
     // outgoing-handler.handle, which i guess is gonna be a method in
     // Embedding?
     pub fn new(
-        resp: impl crate::http::IncomingResponse + 'static,
-        headers: impl crate::http::Fields + 'static,
-        body: impl crate::http::IncomingBody + 'static,
+        resp: crate::http::IncomingResponse,
+        headers: crate::http::Fields,
+        body: crate::http::IncomingBody,
     ) -> Self {
         Self {
-            resp: Box::new(resp),
+            resp: resp,
             headers: FieldsResource::new(headers),
-            body: Some(Box::new(body)),
+            body: Some(body),
         }
     }
 }
@@ -285,7 +285,7 @@ impl types::HostIncomingResponse for EmbeddingCtx {
         let table = self.table();
         // Inner result: only return the IncomingBody resource once. Subsequent returns error.
         if let Some(body) = table.get_mut(&this)?.body.take() {
-            Ok(Ok(table.push(body)?))
+            Ok(Ok(table.push(IncomingBodyResource(body))?))
         } else {
             Ok(Err(()))
         }
@@ -395,7 +395,7 @@ impl types::HostFutureIncomingResponse for EmbeddingCtx {
     }
 }
 
-pub type DynIncomingBody = Box<dyn crate::http::IncomingBody>;
+pub struct IncomingBodyResource(crate::http::IncomingBody);
 
 impl types::HostIncomingBody for EmbeddingCtx {
     fn stream(
@@ -416,7 +416,7 @@ impl types::HostIncomingBody for EmbeddingCtx {
     }
 }
 
-pub type DynOutgoingBody = Box<dyn crate::http::OutgoingBody>;
+pub struct OutgoingBodyResource(crate::http::OutgoingBody);
 
 impl types::HostOutgoingBody for EmbeddingCtx {
     fn write(
@@ -440,9 +440,9 @@ impl types::HostOutgoingBody for EmbeddingCtx {
 
 #[derive(Clone)]
 #[allow(dead_code)] // Temporary - while HostFields and Fields trait are just stubs
-pub struct FieldsResource(Rc<dyn crate::http::Fields>);
+pub struct FieldsResource(Rc<crate::http::Fields>);
 impl FieldsResource {
-    pub fn new(fields: impl crate::http::Fields + 'static) -> Self {
+    pub fn new(fields: crate::http::Fields) -> Self {
         Self(Rc::new(fields))
     }
 }
@@ -527,7 +527,7 @@ impl types::HostFutureTrailers for EmbeddingCtx {
     }
 }
 
-pub type DynResponseOutparam = Box<dyn crate::http::ResponseOutparam>;
+pub struct ResponseOutparamResource(crate::http::ResponseOutparam);
 
 impl types::HostResponseOutparam for EmbeddingCtx {
     fn set(
@@ -543,7 +543,7 @@ impl types::HostResponseOutparam for EmbeddingCtx {
     }
 }
 
-pub type DynRequestOptions = Box<dyn crate::http::RequestOptions>;
+pub struct RequestOptionsResource(crate::http::RequestOptions);
 
 impl types::HostRequestOptions for EmbeddingCtx {
     fn new(&mut self) -> Result<Resource<types::RequestOptions>> {

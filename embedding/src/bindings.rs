@@ -19,12 +19,12 @@ wasmtime::component::bindgen!({
         "wasi:http/types/outgoing-request": http::OutgoingRequestResource,
         "wasi:http/types/incoming-response": http::IncomingResponseResource,
         "wasi:http/types/future-incoming-response": http::FutureIncomingResponse,
-        "wasi:http/types/incoming-body": http::DynIncomingBody,
-        "wasi:http/types/outgoing-body": http::DynOutgoingBody,
+        "wasi:http/types/incoming-body": http::IncomingBodyResource,
+        "wasi:http/types/outgoing-body": http::OutgoingBodyResource,
         "wasi:http/types/fields": http::FieldsResource,
         "wasi:http/types/future-trailers": http::FutureTrailers,
-        "wasi:http/types/response-outparam": http::DynResponseOutparam,
-        "wasi:http/types/request-options": http::DynRequestOptions,
+        "wasi:http/types/response-outparam": http::ResponseOutparamResource,
+        "wasi:http/types/request-options": http::RequestOptionsResource,
     }
 });
 
