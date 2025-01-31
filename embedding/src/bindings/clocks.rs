@@ -1,4 +1,4 @@
-use crate::{EImpl, Embedding};
+use crate::ctx::EmbeddingCtx;
 use anyhow::Result;
 use wasmtime::component::Resource;
 use wasmtime_wasi_io::{
@@ -8,7 +8,7 @@ use wasmtime_wasi_io::{
 
 use super::wasi::clocks::monotonic_clock;
 
-impl<E: Embedding> monotonic_clock::Host for EImpl<E> {
+impl monotonic_clock::Host for EmbeddingCtx {
     fn now(&mut self) -> Result<monotonic_clock::Instant> {
         Ok(self.monotonic_now())
     }

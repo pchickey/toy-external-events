@@ -1,5 +1,5 @@
 [workspace]
-members = [ "guest", "embeddable", "embedding" ]
+members = [ "guest", "embedding" ]
 
 [workspace.dependencies]
 anyhow = { version = "1", default-features = false }
@@ -7,7 +7,6 @@ wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "pch
 wasmtime-wasi-io = { git = "https://github.com/bytecodealliance/wasmtime", branch = "pch/wasmtime_bindgen_nostd", default-features = false }
 futures-lite = { version = "2.6", default-features = false }
 bytes = { version = "1", default-features = false }
-embeddable = { path = "embeddable" }
 embedding = { path = "embedding" }
 pin-project-lite = "0.2.8"
 async-task = { version = "4.7", default-features = false }

@@ -4,7 +4,7 @@ mod filesystem;
 mod http;
 mod random;
 
-use crate::{EImpl, Embedding};
+use crate::ctx::EmbeddingCtx;
 use anyhow::Result;
 use wasmtime::component::Linker;
 
@@ -28,8 +28,15 @@ wasmtime::component::bindgen!({
     }
 });
 
-pub fn add_to_linker_async<T: Embedding>(linker: &mut Linker<T>) -> Result<()> {
-    let closure = type_annotate::<T, _>(|t| EImpl(wasmtime_wasi_io::IoImpl(t)));
+pub fn add_to_linker_async(linker: &mut Linker<EmbeddingCtx>) -> Result<()> {
+    fn type_annotate<F>(val: F) -> F
+    where
+        F: Fn(&mut EmbeddingCtx) -> &mut EmbeddingCtx,
+    {
+        val
+    }
+
+    let closure = type_annotate(|t| t);
     wasi::clocks::monotonic_clock::add_to_linker_get_host(linker, closure)?;
     wasi::cli::environment::add_to_linker_get_host(linker, closure)?;
     wasi::cli::exit::add_to_linker_get_host(linker, closure)?;
@@ -42,10 +49,4 @@ pub fn add_to_linker_async<T: Embedding>(linker: &mut Linker<T>) -> Result<()> {
     wasi::http::types::add_to_linker_get_host(linker, closure)?;
     // FIXME: need wasi::http::outgoing_handler in here as well.
     Ok(())
-}
-fn type_annotate<T: Embedding, F>(val: F) -> F
-where
-    F: Fn(&mut T) -> EImpl<&mut T>,
-{
-    val
 }

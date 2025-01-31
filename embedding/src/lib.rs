@@ -1,7 +1,12 @@
 #![no_std]
 extern crate alloc;
 
+mod bindings;
+mod ctx;
+mod http;
 mod runtime;
+
+use ctx::EmbeddingCtx;
 use runtime::Executor;
 
 use alloc::boxed::Box;
@@ -24,7 +29,7 @@ use wasmtime::{Config, Engine, Store};
 
 pub struct Runtime {
     engine: Engine,
-    linker: Linker<Ctx>,
+    linker: Linker<EmbeddingCtx>,
 }
 
 impl Runtime {
@@ -34,14 +39,14 @@ impl Runtime {
         let engine = Engine::new(&config)?;
         let mut linker = Linker::new(&engine);
         wasmtime_wasi_io::add_to_linker_async(&mut linker)?;
-        embeddable::add_to_linker_async(&mut linker)?;
+        bindings::add_to_linker_async(&mut linker)?;
         Ok(Runtime { engine, linker })
     }
 
     pub fn load(&self, cwasm: &[u8]) -> Result<RunnableComponent> {
         let component = unsafe { Component::deserialize(&self.engine, cwasm)? };
         let instance_pre = self.linker.instantiate_pre(&component)?;
-        let bindings_pre = embeddable::BindingsPre::new(instance_pre)?;
+        let bindings_pre = bindings::BindingsPre::new(instance_pre)?;
         Ok(RunnableComponent {
             engine: self.engine.clone(),
             bindings_pre,
@@ -51,13 +56,13 @@ impl Runtime {
 
 pub struct RunnableComponent {
     engine: Engine,
-    bindings_pre: embeddable::BindingsPre<Ctx>,
+    bindings_pre: bindings::BindingsPre<EmbeddingCtx>,
 }
 
 impl RunnableComponent {
     pub fn create(&self) -> Result<RunningComponent> {
         let clock = Clock::new();
-        let mut store = Store::new(&self.engine, Ctx::new(clock.clone()));
+        let mut store = Store::new(&self.engine, EmbeddingCtx::new(clock.clone()));
         let bindings_pre = self.bindings_pre.clone();
         let fut = async move {
             let instance = bindings_pre.instantiate_async(&mut store).await?;
@@ -82,7 +87,7 @@ impl RunnableComponent {
 pub struct RunningComponent {
     clock: Clock,
     executor: Executor,
-    output: Pin<Box<Task<Result<Ctx>>>>,
+    output: Pin<Box<Task<Result<EmbeddingCtx>>>>,
 }
 
 impl RunningComponent {
@@ -126,61 +131,6 @@ impl RunningComponent {
             }
             Poll::Ready(Err(e)) => Some(Err(e)),
         }
-    }
-}
-
-struct Ctx {
-    table: ResourceTable,
-    clock: Clock,
-    stdout: TimestampedWrites,
-    stderr: TimestampedWrites,
-}
-impl Ctx {
-    pub fn new(clock: Clock) -> Self {
-        let stdout = TimestampedWrites::new(clock.clone());
-        let stderr = TimestampedWrites::new(clock.clone());
-
-        Ctx {
-            table: ResourceTable::new(),
-            clock,
-            stdout,
-            stderr,
-        }
-    }
-
-    pub fn report(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
-        core::write!(out, "stdout:\n")?;
-        self.stdout.report(out)?;
-        core::write!(out, "stderr:\n")?;
-        self.stderr.report(out)
-    }
-}
-impl wasmtime_wasi_io::IoView for Ctx {
-    fn table(&mut self) -> &mut ResourceTable {
-        &mut self.table
-    }
-}
-// SAFETY: only will consume this crate in single-threaded environment
-unsafe impl Send for Ctx {}
-unsafe impl Sync for Ctx {}
-
-impl embeddable::Embedding for Ctx {
-    fn monotonic_now(&self) -> u64 {
-        let now = self.clock.get();
-        //println!("wasm told now is: {now}");
-        now
-    }
-    fn monotonic_timer(&self, deadline: u64) -> impl Pollable {
-        Deadline::new(self.clock.clone(), deadline)
-    }
-    fn stdin(&self) -> impl InputStream {
-        NeverReadable
-    }
-    fn stdout(&self) -> impl OutputStream {
-        self.stdout.clone()
-    }
-    fn stderr(&self) -> impl OutputStream {
-        self.stderr.clone()
     }
 }
 

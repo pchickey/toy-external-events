@@ -1,4 +1,4 @@
-use crate::{EImpl, Embedding};
+use crate::ctx::EmbeddingCtx;
 use alloc::string::String;
 use alloc::vec::Vec;
 use anyhow::Result;
@@ -7,7 +7,7 @@ use wasmtime_wasi_io::streams::{DynInputStream, DynOutputStream};
 
 use super::wasi::filesystem::{preopens, types};
 
-impl<E: Embedding> preopens::Host for EImpl<E> {
+impl preopens::Host for EmbeddingCtx {
     fn get_directories(&mut self) -> Result<Vec<(Resource<types::Descriptor>, String)>> {
         // Never construct a Descriptor, so all of the methods in the rest of Filesystem should be
         // unreachable.
@@ -15,7 +15,7 @@ impl<E: Embedding> preopens::Host for EImpl<E> {
     }
 }
 
-impl<E: Embedding> types::HostDescriptor for EImpl<E> {
+impl types::HostDescriptor for EmbeddingCtx {
     fn read_via_stream(
         &mut self,
         _: Resource<types::Descriptor>,
@@ -219,7 +219,7 @@ impl<E: Embedding> types::HostDescriptor for EImpl<E> {
         unreachable!("no filesystem")
     }
 }
-impl<E: Embedding> types::HostDirectoryEntryStream for EImpl<E> {
+impl types::HostDirectoryEntryStream for EmbeddingCtx {
     fn read_directory_entry(
         &mut self,
         _: Resource<types::DirectoryEntryStream>,
@@ -230,7 +230,7 @@ impl<E: Embedding> types::HostDirectoryEntryStream for EImpl<E> {
         unreachable!("no filesystem")
     }
 }
-impl<E: Embedding> types::Host for EImpl<E> {
+impl types::Host for EmbeddingCtx {
     fn filesystem_error_code(
         &mut self,
         _: Resource<wasmtime_wasi_io::streams::Error>,

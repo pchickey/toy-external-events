@@ -1,4 +1,4 @@
-use crate::{EImpl, Embedding};
+use crate::ctx::EmbeddingCtx;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -11,7 +11,7 @@ use wasmtime_wasi_io::{
 
 use super::wasi::cli::{environment, exit, stderr, stdin, stdout};
 
-impl<E: Embedding> environment::Host for EImpl<E> {
+impl environment::Host for EmbeddingCtx {
     fn get_arguments(&mut self) -> Result<Vec<String>> {
         Ok(Vec::new())
     }
@@ -23,7 +23,7 @@ impl<E: Embedding> environment::Host for EImpl<E> {
     }
 }
 
-impl<E: Embedding> exit::Host for EImpl<E> {
+impl exit::Host for EmbeddingCtx {
     fn exit(&mut self, code: Result<(), ()>) -> Result<()> {
         if code.is_ok() {
             bail!("wasi exit success")
@@ -33,21 +33,21 @@ impl<E: Embedding> exit::Host for EImpl<E> {
     }
 }
 
-impl<E: Embedding> stdin::Host for EImpl<E> {
+impl stdin::Host for EmbeddingCtx {
     fn get_stdin(&mut self) -> Result<Resource<DynInputStream>> {
         let stdin: DynInputStream = Box::new(self.stdin());
         Ok(self.table().push(stdin)?)
     }
 }
 
-impl<E: Embedding> stdout::Host for EImpl<E> {
+impl stdout::Host for EmbeddingCtx {
     fn get_stdout(&mut self) -> Result<Resource<DynOutputStream>> {
         let stdout: DynOutputStream = Box::new(self.stdout());
         Ok(self.table().push(stdout)?)
     }
 }
 
-impl<E: Embedding> stderr::Host for EImpl<E> {
+impl stderr::Host for EmbeddingCtx {
     fn get_stderr(&mut self) -> Result<Resource<DynOutputStream>> {
         let stderr: DynOutputStream = Box::new(self.stderr());
         Ok(self.table().push(stderr)?)

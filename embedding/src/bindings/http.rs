@@ -1,4 +1,4 @@
-use crate::{EImpl, Embedding};
+use crate::ctx::EmbeddingCtx;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
@@ -42,7 +42,7 @@ impl IncomingRequestResource {
     }
 }
 
-impl<E: Embedding> types::HostIncomingRequest for EImpl<E> {
+impl types::HostIncomingRequest for EmbeddingCtx {
     fn method(&mut self, this: Resource<types::IncomingRequest>) -> Result<types::Method> {
         Ok(self.table().get(&this)?.req.method())
     }
@@ -103,7 +103,7 @@ impl OutgoingResponseResource {
     }
 }
 
-impl<E: Embedding> types::HostOutgoingResponse for EImpl<E> {
+impl types::HostOutgoingResponse for EmbeddingCtx {
     fn new(&mut self, _: Resource<types::Headers>) -> Result<Resource<types::OutgoingResponse>> {
         // FIXME: need some method in Embedding here that returns (impl OutgoingResponse, impl
         // OutgoingBody). then construct the OutgoingResponseResource and stick it into the table.
@@ -167,7 +167,7 @@ impl OutgoingRequestResource {
     }
 }
 
-impl<E: Embedding> types::HostOutgoingRequest for EImpl<E> {
+impl types::HostOutgoingRequest for EmbeddingCtx {
     fn new(&mut self, _: Resource<types::Headers>) -> Result<Resource<types::OutgoingRequest>> {
         // FIXME: need some method in Embedding here that returns (impl OutgoingRequest, impl
         // OutgoingBody). then construct the OutgoingRequestResource and stick it into the table.
@@ -266,7 +266,7 @@ impl IncomingResponseResource {
     }
 }
 
-impl<E: Embedding> types::HostIncomingResponse for EImpl<E> {
+impl types::HostIncomingResponse for EmbeddingCtx {
     fn status(&mut self, this: Resource<types::IncomingResponse>) -> Result<types::StatusCode> {
         Ok(self.table().get(&this)?.resp.status_code())
     }
@@ -341,7 +341,7 @@ impl Pollable for FutureIncomingResponse {
     }
 }
 
-impl<E: Embedding> types::HostFutureIncomingResponse for EImpl<E> {
+impl types::HostFutureIncomingResponse for EmbeddingCtx {
     fn subscribe(
         &mut self,
         this: Resource<types::FutureIncomingResponse>,
@@ -397,7 +397,7 @@ impl<E: Embedding> types::HostFutureIncomingResponse for EImpl<E> {
 
 pub type DynIncomingBody = Box<dyn crate::http::IncomingBody>;
 
-impl<E: Embedding> types::HostIncomingBody for EImpl<E> {
+impl types::HostIncomingBody for EmbeddingCtx {
     fn stream(
         &mut self,
         _: Resource<types::IncomingBody>,
@@ -418,7 +418,7 @@ impl<E: Embedding> types::HostIncomingBody for EImpl<E> {
 
 pub type DynOutgoingBody = Box<dyn crate::http::OutgoingBody>;
 
-impl<E: Embedding> types::HostOutgoingBody for EImpl<E> {
+impl types::HostOutgoingBody for EmbeddingCtx {
     fn write(
         &mut self,
         _: Resource<types::OutgoingBody>,
@@ -450,7 +450,7 @@ impl FieldsResource {
 unsafe impl Send for FieldsResource {}
 unsafe impl Sync for FieldsResource {}
 
-impl<E: Embedding> types::HostFields for EImpl<E> {
+impl types::HostFields for EmbeddingCtx {
     fn new(&mut self) -> Result<Resource<types::Fields>> {
         todo!()
     }
@@ -510,7 +510,7 @@ impl<E: Embedding> types::HostFields for EImpl<E> {
 
 pub struct FutureTrailers;
 
-impl<E: Embedding> types::HostFutureTrailers for EImpl<E> {
+impl types::HostFutureTrailers for EmbeddingCtx {
     fn subscribe(&mut self, _: Resource<types::FutureTrailers>) -> Result<Resource<DynPollable>> {
         todo!()
     }
@@ -529,7 +529,7 @@ impl<E: Embedding> types::HostFutureTrailers for EImpl<E> {
 
 pub type DynResponseOutparam = Box<dyn crate::http::ResponseOutparam>;
 
-impl<E: Embedding> types::HostResponseOutparam for EImpl<E> {
+impl types::HostResponseOutparam for EmbeddingCtx {
     fn set(
         &mut self,
         _: Resource<types::ResponseOutparam>,
@@ -545,7 +545,7 @@ impl<E: Embedding> types::HostResponseOutparam for EImpl<E> {
 
 pub type DynRequestOptions = Box<dyn crate::http::RequestOptions>;
 
-impl<E: Embedding> types::HostRequestOptions for EImpl<E> {
+impl types::HostRequestOptions for EmbeddingCtx {
     fn new(&mut self) -> Result<Resource<types::RequestOptions>> {
         todo!()
     }
@@ -594,7 +594,7 @@ impl<E: Embedding> types::HostRequestOptions for EImpl<E> {
     }
 }
 
-impl<E: Embedding> types::Host for EImpl<E> {
+impl types::Host for EmbeddingCtx {
     fn http_error_code(
         &mut self,
         _: Resource<wasmtime_wasi_io::streams::Error>,

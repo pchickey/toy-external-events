@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embeddable.workspace = true
 anyhow.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi-io.workspace = true
