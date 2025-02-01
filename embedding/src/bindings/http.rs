@@ -16,7 +16,7 @@ use wasmtime_wasi_io::{
 };
 
 use super::wasi::clocks::monotonic_clock;
-use super::wasi::http::types;
+use super::wasi::http::{outgoing_handler, types};
 
 /// bindgen with clause makes types::IncomingRequest an alias to this:
 pub struct IncomingRequestResource {
@@ -735,5 +735,36 @@ impl types::Host for EmbeddingCtx {
     ) -> Result<Option<types::ErrorCode>> {
         let err = self.table().get(&this)?;
         Ok(err.downcast_ref::<types::ErrorCode>().cloned())
+    }
+}
+
+impl outgoing_handler::Host for EmbeddingCtx {
+    fn handle(
+        &mut self,
+        request: Resource<types::OutgoingRequest>,
+        options: Option<Resource<types::RequestOptions>>,
+    ) -> Result<Result<Resource<types::FutureIncomingResponse>, types::ErrorCode>> {
+        let OutgoingRequestResource { req, headers, body } = self.table().delete(request)?;
+        let headers = match headers {
+            FieldsResource::Mut(_) => Err(anyhow!(
+                "outgoing request had a mut fields, should be impossible"
+            ))?,
+            FieldsResource::Immut(rc) => match Rc::try_unwrap(rc) {
+                Ok(fields) => fields,
+                Err(rc) => Err(anyhow!(
+                    "{} outstanding references to immut fields, should be impossible",
+                    Rc::strong_count(&rc)
+                ))?,
+            },
+        };
+        let options = options
+            .map(|options| self.table().delete(options))
+            .transpose()?
+            .map(|o| o.0);
+        let task = crate::runtime::Executor::current().spawn(async move {
+            let (resp, headers, body) = req.send(headers, body, options).await?;
+            Ok(IncomingResponseResource::new(resp, headers, body))
+        });
+        Ok(Ok(self.table().push(FutureIncomingResponse::new(task))?))
     }
 }

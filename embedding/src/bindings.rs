@@ -47,6 +47,7 @@ pub fn add_to_linker_async(linker: &mut Linker<EmbeddingCtx>) -> Result<()> {
     wasi::filesystem::types::add_to_linker_get_host(linker, closure)?;
     wasi::random::random::add_to_linker_get_host(linker, closure)?;
     wasi::http::types::add_to_linker_get_host(linker, closure)?;
+    wasi::http::outgoing_handler::add_to_linker_get_host(linker, closure)?;
     // FIXME: need wasi::http::outgoing_handler in here as well.
     Ok(())
 }

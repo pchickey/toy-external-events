@@ -117,6 +117,15 @@ impl OutgoingRequest {
         *self.authority.borrow_mut() = auth;
         Ok(())
     }
+
+    pub async fn send(
+        self,
+        _headers: ImmutFields,
+        _body: Option<OutgoingBody>,
+        _options: Option<RequestOptions>,
+    ) -> Result<(IncomingResponse, Fields, IncomingBody), ErrorCode> {
+        todo!()
+    }
 }
 
 // Not doing placeholders here for the moment
