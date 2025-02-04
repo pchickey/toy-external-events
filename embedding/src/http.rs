@@ -128,37 +128,78 @@ impl OutgoingRequest {
     }
 }
 
-// Not doing placeholders here for the moment
-pub struct Fields {}
+// Minimum viable implementation
+pub struct Fields {
+    pairs: RefCell<Vec<(String, String)>>,
+}
 impl Fields {
     pub fn new() -> Self {
-        Fields {}
+        Fields {
+            pairs: RefCell::new(Vec::new()),
+        }
     }
-    pub fn insert(&self, _name: FieldName, _value: FieldValue) -> Result<(), HeaderError> {
-        todo!()
+    pub fn insert(&self, name: FieldName, value: FieldValue) -> Result<(), HeaderError> {
+        // FIXME: need to reject any forbidden headers here (content-length etc)
+        let name = name.to_lowercase();
+        let value = String::from_utf8(value).map_err(|_| HeaderError::InvalidSyntax)?;
+        self.pairs.borrow_mut().push((name, value));
+        Ok(())
     }
-    pub fn get(&self, _name: &FieldName) -> Vec<&FieldValue> {
-        Vec::new()
+    pub fn get(&self, name: &FieldName) -> Vec<FieldValue> {
+        let name = name.to_lowercase();
+        self.pairs
+            .borrow()
+            .iter()
+            .filter_map(|(k, v)| {
+                if *k == name {
+                    Some(v.as_bytes().to_vec())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
-    pub fn delete(&self, _name: &FieldName) {
-        todo!()
+    pub fn delete(&self, name: &FieldName) {
+        let name = name.to_lowercase();
+        self.pairs.borrow_mut().retain(|(k, _)| *k != name);
     }
     pub fn entries(&self) -> Vec<(FieldName, FieldValue)> {
-        Vec::new()
+        self.pairs
+            .borrow()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_bytes().to_vec()))
+            .collect()
     }
     pub fn into_immut(self) -> ImmutFields {
-        ImmutFields {}
+        ImmutFields {
+            pairs: self.pairs.into_inner(),
+        }
     }
 }
 
-// Not doing placeholders here for the moment
-pub struct ImmutFields {}
+// Minimum viable implementation
+pub struct ImmutFields {
+    pairs: Vec<(String, String)>,
+}
 impl ImmutFields {
-    pub fn get(&self, _name: &FieldName) -> Vec<&FieldValue> {
-        Vec::new()
+    pub fn get(&self, name: &FieldName) -> Vec<FieldValue> {
+        let name = name.to_lowercase();
+        self.pairs
+            .iter()
+            .filter_map(|(k, v)| {
+                if *k == name {
+                    Some(v.as_bytes().to_vec())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
     pub fn entries(&self) -> Vec<(FieldName, FieldValue)> {
-        Vec::new()
+        self.pairs
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_bytes().to_vec()))
+            .collect()
     }
 }
 
@@ -180,7 +221,7 @@ impl ResponseOutparam {
     pub fn send_success(
         self,
         _resp: OutgoingResponse,
-        _headers: Fields,
+        _headers: ImmutFields,
         _body: Option<OutgoingBody>,
     ) {
         todo!()

@@ -86,18 +86,22 @@ impl types::HostIncomingRequest for EmbeddingCtx {
 
 pub struct OutgoingResponseResource {
     resp: crate::http::OutgoingResponse,
-    headers: FieldsResource,
+    headers: Rc<crate::http::ImmutFields>,
     body: Option<crate::http::OutgoingBody>,
 }
+// SAFETY: single-threaded embedding only
+unsafe impl Send for OutgoingResponseResource {}
+unsafe impl Sync for OutgoingResponseResource {}
+
 impl OutgoingResponseResource {
     pub fn new(
         resp: crate::http::OutgoingResponse,
-        headers: FieldsResource,
+        headers: crate::http::ImmutFields,
         body: crate::http::OutgoingBody,
     ) -> Self {
         Self {
             resp,
-            headers,
+            headers: Rc::new(headers),
             body: Some(body),
         }
     }
@@ -134,7 +138,7 @@ impl types::HostOutgoingResponse for EmbeddingCtx {
     ) -> Result<Resource<types::Headers>> {
         let table = self.table();
         let headers = table.get(&this)?.headers.clone();
-        Ok(table.push(headers)?)
+        Ok(table.push(FieldsResource::Immut(headers))?)
     }
     fn body(
         &mut self,
@@ -156,18 +160,21 @@ impl types::HostOutgoingResponse for EmbeddingCtx {
 
 pub struct OutgoingRequestResource {
     req: crate::http::OutgoingRequest,
-    headers: FieldsResource,
+    headers: Rc<crate::http::ImmutFields>,
     body: Option<crate::http::OutgoingBody>,
 }
+// SAFETY: single-threaded embedding only
+unsafe impl Send for OutgoingRequestResource {}
+unsafe impl Sync for OutgoingRequestResource {}
 impl OutgoingRequestResource {
     pub fn new(
         req: crate::http::OutgoingRequest,
-        headers: FieldsResource,
+        headers: crate::http::ImmutFields,
         body: crate::http::OutgoingBody,
     ) -> Self {
         Self {
             req,
-            headers,
+            headers: Rc::new(headers),
             body: Some(body),
         }
     }
@@ -246,7 +253,7 @@ impl types::HostOutgoingRequest for EmbeddingCtx {
     ) -> Result<Resource<types::Headers>> {
         let table = self.table();
         let headers = table.get(&this)?.headers.clone();
-        Ok(table.push(headers)?)
+        Ok(table.push(FieldsResource::Immut(headers))?)
     }
     fn drop(&mut self, this: Resource<types::OutgoingRequest>) -> Result<()> {
         self.table().delete(this)?;
@@ -451,7 +458,6 @@ impl types::HostOutgoingBody for EmbeddingCtx {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)] // Temporary - while HostFields and Fields trait are just stubs
 pub enum FieldsResource {
     Mut(Rc<crate::http::Fields>),
     Immut(Rc<crate::http::ImmutFields>),
@@ -461,9 +467,11 @@ impl FieldsResource {
         Self::Mut(Rc::new(fields))
     }
 
-    pub fn freeze(self) -> Result<Self> {
+    pub fn freeze(self) -> Result<crate::http::ImmutFields> {
         match self {
-            Self::Immut(rc) => Ok(Self::Immut(rc)),
+            Self::Immut(_) => unreachable!(
+                "I think we can't call freeze on an immut fields but tbh I'm not 100% sure"
+            ),
             Self::Mut(rc) => {
                 let fields = Rc::try_unwrap(rc).map_err(|rc| {
                     anyhow!(
@@ -471,7 +479,7 @@ impl FieldsResource {
                         Rc::strong_count(&rc)
                     )
                 })?;
-                Ok(Self::Immut(Rc::new(fields.into_immut())))
+                Ok(fields.into_immut())
             }
         }
     }
@@ -504,8 +512,8 @@ impl types::HostFields for EmbeddingCtx {
         key: types::FieldKey,
     ) -> Result<Vec<types::FieldValue>> {
         match self.table().get(&this)? {
-            FieldsResource::Mut(fs) => Ok(fs.get(&key).into_iter().cloned().collect()),
-            FieldsResource::Immut(fs) => Ok(fs.get(&key).into_iter().cloned().collect()),
+            FieldsResource::Mut(fs) => Ok(fs.get(&key).into_iter().collect()),
+            FieldsResource::Immut(fs) => Ok(fs.get(&key).into_iter().collect()),
         }
     }
     fn has(&mut self, this: Resource<types::Fields>, key: types::FieldKey) -> Result<bool> {
@@ -578,7 +586,7 @@ impl types::HostFields for EmbeddingCtx {
             FieldsResource::Immut(fs) => fs.entries(),
         };
         self.from_list(entries)
-            .map(|r| r.expect("from_list wont reject entries from another fields"))
+            .map(|r| r.expect("Fields constructor wont reject entries from another Fields"))
     }
     fn drop(&mut self, this: Resource<types::Fields>) -> Result<()> {
         self.table().delete(this)?;
@@ -633,17 +641,12 @@ impl types::HostResponseOutparam for EmbeddingCtx {
         match result {
             Ok(out_resp) => {
                 let resp = self.table().delete(out_resp)?;
-                let headers = match resp.headers {
-                    FieldsResource::Mut(rc) => Rc::try_unwrap(rc).map_err(|rc| {
-                        anyhow!(
-                            "{} outstanding references to mut fields, should be impossible",
-                            Rc::strong_count(&rc)
-                        )
-                    })?,
-                    FieldsResource::Immut(_) => Err(anyhow!(
-                        "outgoing response contained immut fields, should be impossible"
-                    ))?,
-                };
+                let headers = Rc::try_unwrap(resp.headers).map_err(|rc| {
+                    anyhow!(
+                        "{} outstanding references to mut fields, should be impossible",
+                        Rc::strong_count(&rc)
+                    )
+                })?;
                 this.0.send_success(resp.resp, headers, resp.body);
             }
             Err(e) => {
@@ -745,18 +748,12 @@ impl outgoing_handler::Host for EmbeddingCtx {
         options: Option<Resource<types::RequestOptions>>,
     ) -> Result<Result<Resource<types::FutureIncomingResponse>, types::ErrorCode>> {
         let OutgoingRequestResource { req, headers, body } = self.table().delete(request)?;
-        let headers = match headers {
-            FieldsResource::Mut(_) => Err(anyhow!(
-                "outgoing request had a mut fields, should be impossible"
-            ))?,
-            FieldsResource::Immut(rc) => match Rc::try_unwrap(rc) {
-                Ok(fields) => fields,
-                Err(rc) => Err(anyhow!(
-                    "{} outstanding references to immut fields, should be impossible",
-                    Rc::strong_count(&rc)
-                ))?,
-            },
-        };
+        let headers = Rc::try_unwrap(headers).map_err(|rc| {
+            anyhow!(
+                "{} outstanding references to immut fields, should be impossible",
+                Rc::strong_count(&rc)
+            )
+        })?;
         let options = options
             .map(|options| self.table().delete(options))
             .transpose()?
