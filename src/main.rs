@@ -22,7 +22,7 @@ fn main() -> Result<()> {
             method: embedding::http::Method::Get,
             scheme: Some(embedding::http::Scheme::Https),
             authority: Some("example.com".to_owned()),
-            path_with_query: None,
+            path_with_query: Some("".to_owned()),
         },
         embedding::http::Fields::new(),
     )?;

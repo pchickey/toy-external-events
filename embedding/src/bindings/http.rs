@@ -451,19 +451,47 @@ impl types::HostIncomingBody for EmbeddingCtx {
 
 pub struct OutgoingBodyResource(crate::http::OutgoingBody);
 
+struct TrapOnWrite;
+
+impl wasmtime_wasi_io::streams::OutputStream for TrapOnWrite {
+    fn check_write(&mut self) -> Result<usize, wasmtime_wasi_io::streams::StreamError> {
+        Ok(usize::MAX)
+    }
+    fn write(&mut self, bs: bytes::Bytes) -> Result<(), wasmtime_wasi_io::streams::StreamError> {
+        Err(wasmtime_wasi_io::streams::StreamError::Trap(
+            anyhow::anyhow!("cant write!!! {bs:?}"),
+        ))
+    }
+    fn flush(&mut self) -> Result<(), wasmtime_wasi_io::streams::StreamError> {
+        Err(wasmtime_wasi_io::streams::StreamError::trap(
+            "cant write!!!",
+        ))
+    }
+}
+#[wasmtime_wasi_io::async_trait]
+impl wasmtime_wasi_io::poll::Pollable for TrapOnWrite {
+    async fn ready(&mut self) {}
+}
+
 impl types::HostOutgoingBody for EmbeddingCtx {
     fn write(
         &mut self,
-        _: Resource<types::OutgoingBody>,
+        this: Resource<types::OutgoingBody>,
     ) -> Result<Result<Resource<DynOutputStream>, ()>> {
-        todo!()
+        let _this = self.table().get(&this)?;
+        let output_stream: wasmtime_wasi_io::streams::DynOutputStream = Box::new(TrapOnWrite);
+        Ok(Ok(self.table().push(output_stream)?))
     }
     fn finish(
         &mut self,
-        _: Resource<types::OutgoingBody>,
-        _: Option<Resource<types::Trailers>>,
+        this: Resource<types::OutgoingBody>,
+        trailers: Option<Resource<types::Trailers>>,
     ) -> Result<Result<(), types::ErrorCode>> {
-        todo!()
+        self.table().delete(this)?;
+        if let Some(trailers) = trailers {
+            self.table().delete(trailers)?;
+        }
+        Ok(Ok(()))
     }
     fn drop(&mut self, this: Resource<types::OutgoingBody>) -> Result<()> {
         self.table().delete(this)?;
