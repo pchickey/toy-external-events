@@ -416,12 +416,26 @@ impl types::HostFutureIncomingResponse for EmbeddingCtx {
 
 pub struct IncomingBodyResource(crate::http::IncomingBody);
 
+struct TrapOnRead;
+
+impl wasmtime_wasi_io::streams::InputStream for TrapOnRead {
+    fn read(&mut self, _: usize) -> Result<bytes::Bytes, wasmtime_wasi_io::streams::StreamError> {
+        Err(wasmtime_wasi_io::streams::StreamError::trap("cant read!!!"))
+    }
+}
+#[wasmtime_wasi_io::async_trait]
+impl wasmtime_wasi_io::poll::Pollable for TrapOnRead {
+    async fn ready(&mut self) {}
+}
+
 impl types::HostIncomingBody for EmbeddingCtx {
     fn stream(
         &mut self,
-        _: Resource<types::IncomingBody>,
+        this: Resource<types::IncomingBody>,
     ) -> Result<Result<Resource<DynInputStream>, ()>> {
-        todo!()
+        let _this = self.table().get(&this)?;
+        let input_stream: wasmtime_wasi_io::streams::DynInputStream = Box::new(TrapOnRead);
+        Ok(Ok(self.table().push(input_stream)?))
     }
     fn finish(
         &mut self,
