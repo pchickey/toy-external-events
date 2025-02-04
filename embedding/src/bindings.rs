@@ -1,12 +1,13 @@
 mod cli;
 mod clocks;
 mod filesystem;
-pub(crate) mod http;
+mod http;
 mod random;
 
 use crate::ctx::EmbeddingCtx;
 use anyhow::Result;
 use wasmtime::component::Linker;
+use wasmtime::Store;
 
 wasmtime::component::bindgen!({
     world: "toy:embedding/bindings",
@@ -49,4 +50,24 @@ pub fn add_to_linker_async(linker: &mut Linker<EmbeddingCtx>) -> Result<()> {
     wasi::http::types::add_to_linker_get_host(linker, closure)?;
     wasi::http::outgoing_handler::add_to_linker_get_host(linker, closure)?;
     Ok(())
+}
+
+impl Bindings {
+    pub async fn wasi_http_incoming_handler_handle(
+        &self,
+        store: &mut Store<EmbeddingCtx>,
+        incoming: crate::http::IncomingRequest,
+        headers: crate::http::Fields,
+        body: crate::http::IncomingBody,
+        outgoing: crate::http::ResponseOutparam,
+    ) -> Result<()> {
+        use wasmtime_wasi_io::IoView;
+        let incoming = http::IncomingRequestResource::new(incoming, headers, body);
+        let outgoing = http::ResponseOutparamResource::new(outgoing);
+        let incoming = store.data_mut().table().push(incoming)?;
+        let outgoing = store.data_mut().table().push(outgoing)?;
+        self.wasi_http_incoming_handler()
+            .call_handle(store, incoming, outgoing)
+            .await
+    }
 }

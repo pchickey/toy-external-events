@@ -61,20 +61,11 @@ impl RunnableComponent {
         &self,
         incoming: crate::http::IncomingRequest,
         headers: crate::http::Fields,
+        body: crate::http::IncomingBody,
     ) -> Result<RunningComponent> {
-        use wasmtime_wasi_io::IoView as _;
-
         let clock = Clock::new();
         let mut store = Store::new(&self.engine, EmbeddingCtx::new(clock.clone()));
-        let incoming = crate::bindings::http::IncomingRequestResource::new(
-            incoming,
-            headers,
-            crate::http::IncomingBody {},
-        );
         let mailbox = crate::http::ResponseOutparam::new();
-        let outgoing = crate::bindings::http::ResponseOutparamResource::new(mailbox.clone());
-        let incoming = store.data_mut().table().push(incoming)?;
-        let outgoing = store.data_mut().table().push(outgoing)?;
         let bindings_pre = self.bindings_pre.clone();
         let fut = async move {
             let instance = match bindings_pre.instantiate_async(&mut store).await {
@@ -82,8 +73,13 @@ impl RunnableComponent {
                 Err(e) => return (store.into_data(), Err(e).context("instantiating")),
             };
             match instance
-                .wasi_http_incoming_handler()
-                .call_handle(&mut store, incoming, outgoing)
+                .wasi_http_incoming_handler_handle(
+                    &mut store,
+                    incoming,
+                    headers,
+                    body,
+                    mailbox.clone(),
+                )
                 .await
             {
                 Ok(()) => {}

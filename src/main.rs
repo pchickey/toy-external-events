@@ -25,6 +25,7 @@ fn main() -> Result<()> {
             path_with_query: Some("".to_owned()),
         },
         embedding::http::Fields::new(),
+        embedding::http::IncomingBody {},
     )?;
 
     loop {
