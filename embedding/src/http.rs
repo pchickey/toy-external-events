@@ -8,6 +8,7 @@ use core::time::Duration;
 
 // Placeholder fields. This will contain pointers to some external resource
 // and the methods will retrieve these values out of there.
+#[derive(Debug)]
 pub struct IncomingRequest {
     pub method: Method,
     pub path_with_query: Option<String>,
@@ -32,6 +33,7 @@ impl IncomingRequest {
 
 // Placeholder fields. This will contain pointers to some external resource
 // and the methods will retrieve these values out of there.
+#[derive(Debug)]
 pub struct IncomingResponse {
     pub status_code: StatusCode,
 }
@@ -44,6 +46,7 @@ impl IncomingResponse {
 
 // Placeholder fields. This will contain pointers to some external resource
 // and the methods will set/get values out of there.
+#[derive(Debug)]
 pub struct OutgoingResponse {
     pub status_code: Cell<StatusCode>,
 }
@@ -70,6 +73,7 @@ impl OutgoingResponse {
 
 // Placeholder fields. This will contain pointers to some external resource
 // and the methods will set/get values out of there.
+#[derive(Debug)]
 pub struct OutgoingRequest {
     pub method: RefCell<Method>,
     pub path_with_query: RefCell<Option<String>>,
@@ -129,6 +133,7 @@ impl OutgoingRequest {
 }
 
 // Minimum viable implementation
+#[derive(Debug)]
 pub struct Fields {
     pairs: RefCell<Vec<(String, String)>>,
 }
@@ -178,6 +183,7 @@ impl Fields {
 }
 
 // Minimum viable implementation
+#[derive(Debug)]
 pub struct ImmutFields {
     pairs: Vec<(String, String)>,
 }
@@ -203,7 +209,7 @@ impl ImmutFields {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct RequestOptions {
     pub connect_timeout: Option<Duration>,
     pub first_byte_timeout: Option<Duration>,
@@ -216,17 +222,37 @@ pub struct OutgoingBody {}
 
 // This will contain some pointers that know where to write an outgoing response into the
 // embedding???
-pub struct ResponseOutparam {}
+#[derive(Clone)]
+pub struct ResponseOutparam {
+    mailbox: alloc::rc::Rc<
+        core::cell::RefCell<Option<Result<(OutgoingResponse, ImmutFields), ErrorCode>>>,
+    >,
+}
+// SAFETY: single threaded
+unsafe impl Send for ResponseOutparam {}
+unsafe impl Sync for ResponseOutparam {}
 impl ResponseOutparam {
+    pub fn new() -> Self {
+        Self {
+            mailbox: alloc::rc::Rc::new(core::cell::RefCell::new(None)),
+        }
+    }
     pub fn send_success(
         self,
-        _resp: OutgoingResponse,
-        _headers: ImmutFields,
+        resp: OutgoingResponse,
+        headers: ImmutFields,
         _body: Option<OutgoingBody>,
     ) {
-        todo!()
+        *self.mailbox.borrow_mut() = Some(Ok((resp, headers)));
     }
-    pub fn send_error(self, _err: ErrorCode) {
-        todo!()
+    pub fn send_error(self, err: ErrorCode) {
+        *self.mailbox.borrow_mut() = Some(Err(err));
+    }
+    pub fn into_inner(self) -> anyhow::Result<(OutgoingResponse, ImmutFields)> {
+        Ok(self
+            .mailbox
+            .borrow_mut()
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("no response sent to outparam"))??)
     }
 }

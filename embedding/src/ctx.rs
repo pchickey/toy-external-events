@@ -1,5 +1,6 @@
 use crate::clock::{Clock, Deadline};
 use crate::streams::{NeverReadable, TimestampedWrites};
+use alloc::string::String;
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi_io::{
     poll::Pollable,
@@ -34,11 +35,14 @@ impl EmbeddingCtx {
         }
     }
 
-    pub fn report(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
-        core::write!(out, "stdout:\n")?;
-        self.stdout.report(out)?;
-        core::write!(out, "stderr:\n")?;
-        self.stderr.report(out)
+    pub fn report(&self) -> String {
+        use core::fmt::Write;
+        let mut out = String::new();
+        core::write!(&mut out, "stdout:\n").unwrap();
+        self.stdout.report(&mut out).unwrap();
+        core::write!(&mut out, "stderr:\n").unwrap();
+        self.stderr.report(&mut out).unwrap();
+        out
     }
     pub(crate) fn monotonic_now(&self) -> u64 {
         let now = self.clock.get();

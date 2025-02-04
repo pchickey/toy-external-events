@@ -4,7 +4,7 @@ extern crate alloc;
 mod bindings;
 mod clock;
 mod ctx;
-mod http;
+pub mod http;
 mod noop_waker;
 mod runtime;
 mod streams;
@@ -15,7 +15,7 @@ use runtime::Executor;
 
 use alloc::boxed::Box;
 use alloc::string::String;
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use async_task::Task;
 use core::future::Future;
 use core::pin::Pin;
@@ -57,18 +57,40 @@ pub struct RunnableComponent {
 }
 
 impl RunnableComponent {
-    pub fn create(&self) -> Result<RunningComponent> {
+    pub fn create(
+        &self,
+        incoming: crate::http::IncomingRequest,
+        headers: crate::http::Fields,
+    ) -> Result<RunningComponent> {
+        use wasmtime_wasi_io::IoView as _;
+
         let clock = Clock::new();
         let mut store = Store::new(&self.engine, EmbeddingCtx::new(clock.clone()));
+        let incoming = crate::bindings::http::IncomingRequestResource::new(
+            incoming,
+            headers,
+            crate::http::IncomingBody {},
+        );
+        let mailbox = crate::http::ResponseOutparam::new();
+        let outgoing = crate::bindings::http::ResponseOutparamResource::new(mailbox.clone());
+        let incoming = store.data_mut().table().push(incoming)?;
+        let outgoing = store.data_mut().table().push(outgoing)?;
         let bindings_pre = self.bindings_pre.clone();
         let fut = async move {
-            let instance = bindings_pre.instantiate_async(&mut store).await?;
-            instance
-                .wasi_cli_run()
-                .call_run(&mut store)
-                .await?
-                .map_err(|()| anyhow::anyhow!("cli run exited with error"))?;
-            Ok::<_, anyhow::Error>(store.into_data())
+            let instance = match bindings_pre.instantiate_async(&mut store).await {
+                Ok(i) => i,
+                Err(e) => return (store.into_data(), Err(e).context("instantiating")),
+            };
+            match instance
+                .wasi_http_incoming_handler()
+                .call_handle(&mut store, incoming, outgoing)
+                .await
+            {
+                Ok(()) => {}
+                Err(e) => return (store.into_data(), Err(e).context("running handler")),
+            };
+
+            (store.into_data(), mailbox.into_inner())
         };
         let executor = Executor::new();
         let task = executor.spawn(fut);
@@ -84,7 +106,14 @@ impl RunnableComponent {
 pub struct RunningComponent {
     clock: Clock,
     executor: Executor,
-    output: Pin<Box<Task<Result<EmbeddingCtx>>>>,
+    output: Pin<
+        Box<
+            Task<(
+                EmbeddingCtx,
+                Result<(crate::http::OutgoingResponse, crate::http::ImmutFields)>,
+            )>,
+        >,
+    >,
 }
 
 impl RunningComponent {
@@ -112,21 +141,22 @@ impl RunningComponent {
         self.executor.step()
     }
 
-    pub fn check_complete(&mut self) -> Option<Result<String>> {
+    pub fn check_complete(
+        &mut self,
+    ) -> Option<(
+        String,
+        Result<(crate::http::OutgoingResponse, crate::http::ImmutFields)>,
+    )> {
         match self
             .output
             .as_mut()
             .poll(&mut Context::from_waker(&noop_waker::noop_waker()))
         {
             Poll::Pending => None,
-            Poll::Ready(Ok(ctx)) => {
-                let mut out = String::new();
-                if let Err(e) = ctx.report(&mut out) {
-                    return Some(Err(e.into()));
-                }
-                Some(Ok(out))
+            Poll::Ready((ctx, res)) => {
+                let report = ctx.report();
+                Some((report, res))
             }
-            Poll::Ready(Err(e)) => Some(Err(e)),
         }
     }
 }

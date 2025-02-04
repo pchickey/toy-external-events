@@ -1,7 +1,7 @@
 mod cli;
 mod clocks;
 mod filesystem;
-mod http;
+pub(crate) mod http;
 mod random;
 
 use crate::ctx::EmbeddingCtx;

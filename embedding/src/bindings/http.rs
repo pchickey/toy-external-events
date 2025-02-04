@@ -630,7 +630,11 @@ impl types::HostFutureTrailers for EmbeddingCtx {
 }
 
 pub struct ResponseOutparamResource(crate::http::ResponseOutparam);
-
+impl ResponseOutparamResource {
+    pub fn new(inner: crate::http::ResponseOutparam) -> Self {
+        Self(inner)
+    }
+}
 impl types::HostResponseOutparam for EmbeddingCtx {
     fn set(
         &mut self,

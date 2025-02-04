@@ -17,14 +17,24 @@ fn main() -> Result<()> {
 
     let runtime = embedding::Runtime::new()?;
     let runnable_component = runtime.load(&cwasm)?;
-    let mut running_component = runnable_component.create()?;
+    let mut running_component = runnable_component.create(
+        embedding::http::IncomingRequest {
+            method: embedding::http::Method::Get,
+            scheme: Some(embedding::http::Scheme::Https),
+            authority: Some("example.com".to_owned()),
+            path_with_query: None,
+        },
+        embedding::http::Fields::new(),
+    )?;
 
     loop {
         let runs = running_component.step();
         println!("step ran {runs}");
-        if let Some(report) = running_component.check_complete() {
-            let report = report?;
+        if let Some((report, res)) = running_component.check_complete() {
             println!("{report}");
+            let (response, headers) = res?;
+            println!("{response:?}");
+            println!("{headers:?}");
             return Ok(());
         }
 
