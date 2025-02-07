@@ -5,6 +5,7 @@ mod bindings;
 mod clock;
 mod ctx;
 pub mod http;
+pub mod job;
 mod noop_waker;
 mod runtime;
 mod streams;
@@ -63,8 +64,12 @@ impl RunnableComponent {
         headers: crate::http::Fields,
         body: crate::http::IncomingBody,
     ) -> Result<RunningComponent> {
+        let executor = Executor::new();
         let clock = Clock::new();
-        let mut store = Store::new(&self.engine, EmbeddingCtx::new(clock.clone()));
+        let mut store = Store::new(
+            &self.engine,
+            EmbeddingCtx::new(executor.clone(), clock.clone()),
+        );
         let mailbox = crate::http::ResponseOutparam::new();
         let bindings_pre = self.bindings_pre.clone();
         let fut = async move {
@@ -88,7 +93,6 @@ impl RunnableComponent {
 
             (store.into_data(), mailbox.into_inner())
         };
-        let executor = Executor::new();
         let task = executor.spawn(fut);
 
         Ok(RunningComponent {

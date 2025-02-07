@@ -1,12 +1,10 @@
 use crate::ctx::EmbeddingCtx;
+use crate::job::{Job, Mailbox};
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use anyhow::{anyhow, Result};
-use core::future::Future;
-use core::pin::Pin;
-use core::task::{Context, Poll};
 use wasmtime::component::{Resource, ResourceTable};
 use wasmtime_wasi_io::{
     async_trait,
@@ -315,50 +313,7 @@ impl types::HostIncomingResponse for EmbeddingCtx {
     }
 }
 
-pub struct FutureIncomingResponse {
-    // Task may be pending completion
-    task: Pin<Box<async_task::Task<Result<IncomingResponseResource, types::ErrorCode>>>>,
-    // Result of task, if it completed while awaiting in a Pollable
-    res: Option<Result<IncomingResponseResource, types::ErrorCode>>,
-    // Indicates the completed task's result has been returned by get already
-    gone: bool,
-}
-impl FutureIncomingResponse {
-    // gets constructed in implementation of outgoing-handler.handle.
-    pub fn new(task: async_task::Task<Result<IncomingResponseResource, types::ErrorCode>>) -> Self {
-        Self {
-            task: Box::pin(task),
-            res: None,
-            gone: false,
-        }
-    }
-}
-
-impl Future for FutureIncomingResponse {
-    type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
-        if self.gone {
-            return Poll::Ready(());
-        }
-        if self.res.is_some() {
-            return Poll::Ready(());
-        }
-        match self.task.as_mut().poll(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(res) => {
-                self.res = Some(res);
-                Poll::Ready(())
-            }
-        }
-    }
-}
-
-#[async_trait]
-impl Pollable for FutureIncomingResponse {
-    async fn ready(&mut self) {
-        self.await
-    }
-}
+pub type FutureIncomingResponse = Job<Result<IncomingResponseResource, types::ErrorCode>>;
 
 impl types::HostFutureIncomingResponse for EmbeddingCtx {
     fn subscribe(
@@ -372,40 +327,12 @@ impl types::HostFutureIncomingResponse for EmbeddingCtx {
         this: Resource<types::FutureIncomingResponse>,
     ) -> Result<Option<Result<Result<Resource<types::IncomingResponse>, types::ErrorCode>, ()>>>
     {
-        fn res_into_table(
-            table: &mut ResourceTable,
-            res: Result<IncomingResponseResource, types::ErrorCode>,
-        ) -> Result<Result<Resource<types::IncomingResponse>, types::ErrorCode>> {
-            match res {
-                Ok(resource) => Ok(Ok(table.push(resource)?)),
-                Err(code) => Ok(Err(code)),
-            }
-        }
-
         let this = self.table().get_mut(&this)?;
-        if let Some(res) = this.res.take() {
-            this.gone = true;
-            return Ok(Some(Ok(res_into_table(self.table(), res)?)));
-        }
-        if this.gone {
-            return Ok(Some(Err(())));
-        }
-        // Poll checks for task completion. Doing so in this way will replace any existing waker
-        // with a noop waker. This is ok because it will get a "real" waker when it is polled via a
-        // wasi Pollable if there is actually progress to be made in wasi:io/poll waiting on it.
-        // This operation should be very fast - in this crate's single threaded context, there are
-        // some uncontended atomic swaps in there, but otherwise its just checking state and
-        // returning the task's result if it is complete.
-        match this
-            .task
-            .as_mut()
-            .poll(&mut Context::from_waker(&crate::noop_waker::noop_waker()))
-        {
-            Poll::Pending => Ok(None),
-            Poll::Ready(res) => {
-                this.gone = true;
-                return Ok(Some(Ok(res_into_table(self.table(), res)?)));
-            }
+        match this.mailbox() {
+            Mailbox::Pending => Ok(None),
+            Mailbox::Done(Ok(resource)) => Ok(Some(Ok(Ok(self.table().push(resource)?)))),
+            Mailbox::Done(Err(code)) => Ok(Some(Ok(Err(code)))),
+            Mailbox::Gone => Ok(Some(Err(()))),
         }
     }
     fn drop(&mut self, this: Resource<types::FutureIncomingResponse>) -> Result<()> {
@@ -804,10 +731,10 @@ impl outgoing_handler::Host for EmbeddingCtx {
             .map(|options| self.table().delete(options))
             .transpose()?
             .map(|o| o.0);
-        let task = crate::runtime::Executor::current().spawn(async move {
+        let resp = FutureIncomingResponse::spawn(self.executor(), async move {
             let (resp, headers, body) = req.send(headers, body, options).await?;
             Ok(IncomingResponseResource::new(resp, headers, body))
         });
-        Ok(Ok(self.table().push(FutureIncomingResponse::new(task))?))
+        Ok(Ok(self.table().push(resp)?))
     }
 }
