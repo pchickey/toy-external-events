@@ -6,19 +6,7 @@ use core::cell::RefCell;
 use core::future::Future;
 use core::task::Waker;
 
-struct ExecutorGlobal(RefCell<Option<Executor>>);
-impl ExecutorGlobal {
-    const fn new() -> Self {
-        ExecutorGlobal(RefCell::new(None))
-    }
-}
-// SAFETY: only will consume this crate in single-threaded environment
-unsafe impl Send for ExecutorGlobal {}
-unsafe impl Sync for ExecutorGlobal {}
-
-static EXECUTOR: ExecutorGlobal = ExecutorGlobal::new();
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Executor(Rc<RefCell<ExecutorInner>>);
 // SAFETY: only will consume this crate in single-threaded environment
 unsafe impl Send for Executor {}
@@ -31,36 +19,12 @@ impl Executor {
             runnables: VecDeque::new(),
         })))
     }
-    pub fn current() -> Self {
-        Executor(
-            EXECUTOR
-                .0
-                .borrow_mut()
-                .as_ref()
-                .expect("Executor::current must be called within a running executor")
-                .0
-                .clone(),
-        )
-    }
-
     pub(crate) fn step(&self) -> usize {
-        if EXECUTOR.0.borrow_mut().is_some() {
-            panic!("cannot step while executor is running!")
-        }
-        *EXECUTOR.0.borrow_mut() = Some(self.clone());
-
         let mut count = 0;
         while let Some(runnable) = self.pop_runnable() {
             runnable.run();
             count += 1;
         }
-
-        let _ = EXECUTOR
-            .0
-            .borrow_mut()
-            .take()
-            .expect("executor vacated global while running");
-
         count
     }
 
@@ -93,6 +57,7 @@ impl Executor {
     }
 }
 
+#[derive(Debug)]
 struct ExecutorInner {
     deadlines: Vec<(u64, Waker)>,
     runnables: VecDeque<Runnable>,

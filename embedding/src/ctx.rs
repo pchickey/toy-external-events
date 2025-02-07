@@ -1,4 +1,5 @@
 use crate::clock::{Clock, Deadline};
+use crate::runtime::Executor;
 use crate::streams::{NeverReadable, TimestampedWrites};
 use alloc::string::String;
 use wasmtime::component::ResourceTable;
@@ -17,18 +18,20 @@ impl<T: IoView> IoView for EImpl<T> {
 
 pub struct EmbeddingCtx {
     table: ResourceTable,
+    executor: Executor,
     clock: Clock,
     stdout: TimestampedWrites,
     stderr: TimestampedWrites,
 }
 
 impl EmbeddingCtx {
-    pub fn new(clock: Clock) -> Self {
+    pub fn new(executor: Executor, clock: Clock) -> Self {
         let stdout = TimestampedWrites::new(clock.clone());
         let stderr = TimestampedWrites::new(clock.clone());
 
         EmbeddingCtx {
             table: ResourceTable::new(),
+            executor,
             clock,
             stdout,
             stderr,
@@ -50,7 +53,10 @@ impl EmbeddingCtx {
         now
     }
     pub(crate) fn monotonic_timer(&self, deadline: u64) -> impl Pollable {
-        Deadline::new(self.clock.clone(), deadline)
+        Deadline::new(self.executor.clone(), self.clock.clone(), deadline)
+    }
+    pub(crate) fn executor(&self) -> &Executor {
+        &self.executor
     }
     pub(crate) fn stdin(&self) -> impl InputStream {
         NeverReadable

@@ -29,12 +29,17 @@ unsafe impl Sync for Clock {}
 
 #[derive(Debug, Clone)]
 pub struct Deadline {
+    executor: Executor,
     clock: Clock,
     due: u64,
 }
 impl Deadline {
-    pub fn new(clock: Clock, due: u64) -> Self {
-        Self { clock, due }
+    pub fn new(executor: Executor, clock: Clock, due: u64) -> Self {
+        Self {
+            executor,
+            clock,
+            due,
+        }
     }
 }
 impl Future for Deadline {
@@ -42,7 +47,7 @@ impl Future for Deadline {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let now = self.clock.get();
         if now < self.due {
-            Executor::current().push_deadline(self.due, cx.waker().clone());
+            self.executor.push_deadline(self.due, cx.waker().clone());
             Poll::Pending
         } else {
             Poll::Ready(())
